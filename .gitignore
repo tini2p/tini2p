@@ -1,0 +1,5 @@
+build
+cov
+*.swp
+*.swo
+*.o
