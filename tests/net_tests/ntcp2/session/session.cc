@@ -77,21 +77,15 @@ struct SessionFixture
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
   }
 
-  /// @brief Initialize a mock IPv4 NTCP2 session
-  decltype(auto) InitializeSession()
+  void InitializeSession(const meta::IP_t proto)
   {
-    REQUIRE_NOTHROW(init.Start(false /*prefer_v6*/));
-    REQUIRE_NOTHROW(init.Wait());
-    REQUIRE(init.ready());
+    REQUIRE_NOTHROW(pair.init.Start(proto));
+    REQUIRE_NOTHROW(pair.init.Wait());
+    REQUIRE(pair.init.ready());
 
     Session<SessionResponder>* remote;
     REQUIRE_NOTHROW(
-        remote =
-            manager.listener(meta::IP_t::v4)->session(info->noise_keys().pk));
-
-    REQUIRE(remote);
-    REQUIRE_NOTHROW(remote->Wait());
-    REQUIRE(remote->ready());
+        pair.resp = manager.listener(proto)->session(info->noise_keys().pk));
 
     return remote;
   }
@@ -143,9 +137,7 @@ TEST_CASE_METHOD(
     "IPv4 Session writes and reads after successful connection",
     "[session]")
 {
-  auto remote = InitializeSession();
-
-  REQUIRE(remote);
+  InitializeSession(meta::IP_t::v4);
 
   REQUIRE_NOTHROW(init.Write(msg));
   REQUIRE_NOTHROW(remote->Read(msg));
@@ -159,9 +151,7 @@ TEST_CASE_METHOD(
     "IPv6 Session writes and reads after successful connection",
     "[session]")
 {
-  auto remote_v6 = InitializeSessionV6();
-
-  REQUIRE(remote_v6);
+  InitializeSession(meta::IP_t::v6);
 
   REQUIRE_NOTHROW(init.Write(msg));
   REQUIRE_NOTHROW(remote_v6->Read(msg));
@@ -235,21 +225,19 @@ TEST_CASE_METHOD(
   REQUIRE_THROWS(manager.session(nullptr));
 }
 
-// TODO(tini2p): fix manager + session sockets to be able to restart.
-//   Use executor_work_guard to keep io_context::run from returning
-//TEST_CASE_METHOD(
-//    SessionFixture,
-//    "SessionManager rejects new connection for already existing session",
-//    "[session]")
-//{
-//  decltype(init) s0(dest.get(), info.get());
-//  REQUIRE_NOTHROW(s0.Start());
-//
-//  decltype(init) s1(dest.get(), info.get());
-//  REQUIRE_NOTHROW(s1.Start());
-//  REQUIRE_NOTHROW(s1.Stop());
-//
-//  std::this_thread::sleep_for(std::chrono::milliseconds(100));
-//
-//  REQUIRE(manager.blacklisted(s0.connect_key()));
-//}
+TEST_CASE_METHOD(
+    SessionFixture,
+    "SessionManager rejects new connection for already existing session",
+    "[session]")
+{
+  Session<SessionInitiator> s0(dest.get(), info.get()), s1(dest.get(), info.get());
+
+  REQUIRE_NOTHROW(s0.Start(meta::IP_t::v6));
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  REQUIRE_NOTHROW(s1.Start(meta::IP_t::v6));
+  REQUIRE_NOTHROW(s1.Stop());
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  REQUIRE(manager.blacklisted(s0.connect_key()));
+}

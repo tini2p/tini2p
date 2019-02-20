@@ -64,9 +64,6 @@ class SessionListener
         acc_(ctx_, host, true),
         timer_(ctx_, std::chrono::milliseconds(meta::ntcp2::session::CleanTimeout))
   {
-    if (host.address().is_v6())
-      assert(host.protocol() == acc_.local_endpoint().protocol());
-
     acc_.listen();
 
     timer_.async_wait(
@@ -144,7 +141,6 @@ class SessionListener
  private:
   void Accept()
   {
-    // session type alias for convenience
     using session_t = decltype(sessions_)::value_type::element_type;
 
     const exception::Exception ex{"SessionListener", __func__};
@@ -158,7 +154,7 @@ class SessionListener
         std::lock_guard<std::mutex> l(sessions_mutex_);
 
         auto session = std::make_unique<session_t>(info_, std::move(socket));
-        session->Start();
+        session->Start(meta::ntcp2::session::IP_t::v6);  // try IPv6, fallback to IPv4
 
         // try inserting new connection, or get existing entry
         auto count_it =

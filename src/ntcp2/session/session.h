@@ -142,10 +142,10 @@ class Session
   }
 
   /// @brief Start the NTCP2 session
-  void Start(const bool prefer_v6 = true)
+  void Start(const meta::ntcp2::session::IP_t proto)
   {
     if (std::is_same<SessionRole, SessionInitiator>::value)
-      Connect(prefer_v6);
+      Connect(proto);
     else
       HandleSessionRequest();
   }
@@ -267,10 +267,10 @@ class Session
     });
   }
 
-  void Connect(const bool prefer_v6)
+  void Connect(const meta::ntcp2::session::IP_t proto)
   {
     boost::system::error_code ec;
-    remote_host_ = dest_->host(prefer_v6);
+    remote_host_ = dest_->host((bool)proto);
 
     const exception::Exception ex{"Session", __func__};
 
