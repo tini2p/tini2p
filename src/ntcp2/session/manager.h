@@ -30,20 +30,22 @@
 #ifndef SRC_NTCP2_SESSION_MANAGER_H_
 #define SRC_NTCP2_SESSION_MANAGER_H_
 
-#include "src/ntcp2/router/info.h"
+#include "src/data/router/info.h"
 
 #include "src/ntcp2/session/session.h"
 #include "src/ntcp2/session/listener.h"
 
+namespace tini2p
+{
 namespace ntcp2
 {
 /// @class SessionManager
 /// @brief Class for managing NTCP2 sessions
 class SessionManager
 {
-  router::Info* info_;
-  std::unique_ptr<ntcp2::SessionListener> listener_, listener_v6_;
-  std::vector<std::unique_ptr<ntcp2::Session<ntcp2::SessionInitiator>>> out_sessions_;
+  tini2p::data::Info* info_;
+  std::unique_ptr<SessionListener> listener_, listener_v6_;
+  std::vector<std::unique_ptr<Session<SessionInitiator>>> out_sessions_;
   std::mutex out_sessions_mutex_;
 
  public:
@@ -53,7 +55,7 @@ class SessionManager
   /// @param ipv6_ep IPv6 Local ASIO endpoint to listen for connections
   /// @detail Sessions will be created for both IPv4 and IPv6 routers
   SessionManager(
-      router::Info* info,
+      tini2p::data::Info* info,
       const boost::asio::ip::tcp::endpoint& ipv4_ep,
       const boost::asio::ip::tcp::endpoint& ipv6_ep)
       : info_(info)
@@ -81,7 +83,7 @@ class SessionManager
   /// @detail Local endpoint can be either IPv4 or IPv6
   /// @detail Incoming sessions will only be created for either IPv4 or IPv6 routers
   /// @detail Outgoing sessions will be created for both IPv4 and IPv6 routers
-  SessionManager(router::Info* info, const boost::asio::ip::tcp::endpoint& ep)
+  SessionManager(tini2p::data::Info* info, const boost::asio::ip::tcp::endpoint& ep)
       : info_(info)
   {
     using listener_t = decltype(listener_)::element_type;
@@ -143,7 +145,7 @@ class SessionManager
   /// @return Non-owning ointer to newly created session
   /// @throw Invalid argument if dest is null
   /// @throw Runtime error if session already exists for given destination
-  decltype(out_sessions_)::value_type::pointer session(router::Info* dest)
+  decltype(out_sessions_)::value_type::pointer session(tini2p::data::Info* dest)
   {
     using session_t = decltype(out_sessions_)::value_type::element_type;
 
@@ -180,9 +182,9 @@ class SessionManager
   /// @brief Get a non-const pointer to a session listener
   /// @param ip IP protocol of the listener to retrieve
   /// @throw Invalid argument if ip is invalid protocol
-  decltype(listener_)::pointer listener(const meta::session::IP_t ip)
+  decltype(listener_)::pointer listener(const meta::ntcp2::session::IP_t ip)
   {
-    using ntcp2::meta::session::IP_t;
+    using tini2p::meta::ntcp2::session::IP_t;
 
     if (ip != IP_t::v4 && ip != IP_t::v6)
       exception::Exception{"SessionManager", __func__}
@@ -191,7 +193,7 @@ class SessionManager
     return ip == IP_t::v4 ? listener_.get() : listener_v6_.get();
   }
 
-  bool blacklisted(const ntcp2::SessionKey& key) const
+  bool blacklisted(const SessionKey& key) const
   {
     if (const bool ret = listener_ ? listener_->blacklisted(key) : false)
       return ret;
@@ -200,5 +202,6 @@ class SessionManager
   }
 };
 }  // namespace ntcp2
+}  // namespace tini2p
 
 #endif  // SRC_NTCP2_SESSION_MANAGER_H_

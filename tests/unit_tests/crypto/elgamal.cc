@@ -36,8 +36,8 @@
 #include "src/crypto/constants.h"
 #include "src/crypto/elgamal.h"
 
-namespace meta = ntcp2::meta::crypto::elgamal;
-namespace elgamal = ntcp2::crypto::elgamal;
+namespace meta = tini2p::meta::crypto::elgamal;
+namespace elgamal = tini2p::crypto::elgamal;
 
 struct ElGamalFixture
 {
@@ -51,7 +51,7 @@ struct ElGamalFixture
 
 TEST_CASE_METHOD(ElGamalFixture, "ElGamal has an odd prime", "[elgamal]")
 {
-  namespace constants = ntcp2::meta::crypto::constants;
+  namespace constants = tini2p::meta::crypto::constants;
 
   REQUIRE(constants::elgp % constants::elgg != 0);
 }
@@ -78,7 +78,7 @@ TEST_CASE_METHOD(
 
   elgamal::Plaintext plaintext, result;
 
-  ntcp2::crypto::RandBytes(plaintext.data(), plaintext.size());
+  tini2p::crypto::RandBytes(plaintext.data(), plaintext.size());
 
   for (const auto& pad : zero_pad)
     {
@@ -104,7 +104,7 @@ TEST_CASE_METHOD(
   REQUIRE_NOTHROW(enc.Encrypt(ciphertext, plaintext, zero_pad[false]));
 
   // invalidate the ciphertext to invalidate the decrypted checksum
-  ntcp2::crypto::RandBytes(ciphertext.data(), ciphertext.size());
+  tini2p::crypto::RandBytes(ciphertext.data(), ciphertext.size());
 
   REQUIRE_THROWS(dec.Decrypt(plaintext, ciphertext, zero_pad[false]));
 }

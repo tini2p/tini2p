@@ -99,15 +99,12 @@ TEST_CASE_METHOD(
   --sco_message.data[0];  // reset
 
   // Invalidate part two
-  ++sco_message.data[ntcp2::meta::session_confirmed::PartOneSize];
+  ++sco_message.data[meta::session_confirmed::PartOneSize];
   REQUIRE_THROWS(sco_responder->ProcessMessage(sco_message, srq_message.options));
 }
 
 TEST_CASE("SessionConfirmed rejects null handshake state", "[sco]")
 {
-  using Initiator = ntcp2::SessionConfirmed<ntcp2::Initiator>; 
-  using Responder = ntcp2::SessionConfirmed<ntcp2::Responder>; 
-
-  REQUIRE_THROWS(Initiator(nullptr, {}));
-  REQUIRE_THROWS(Responder(nullptr, {}));
+  REQUIRE_THROWS(SessionConfirmed<Initiator>(nullptr, {}));
+  REQUIRE_THROWS(SessionConfirmed<Responder>(nullptr, {}));
 }

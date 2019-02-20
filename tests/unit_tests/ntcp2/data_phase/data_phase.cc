@@ -31,10 +31,13 @@
 
 #include "tests/unit_tests/mock/handshake.h"
 
-namespace meta = ntcp2::meta::data_phase;
-namespace block = ntcp2::meta::block;
+using tini2p::data::Info;
 
-using BlockPtr = std::unique_ptr<ntcp2::Block>;
+using BlockPtr = std::unique_ptr<tini2p::data::Block>;
+using tini2p::data::DateTimeBlock;
+using tini2p::data::PaddingBlock;
+using tini2p::data::RouterInfoBlock;
+using tini2p::data::TerminationBlock;
 
 struct DataPhaseFixture : public MockHandshake
 {
@@ -46,7 +49,7 @@ struct DataPhaseFixture : public MockHandshake
     InitializeDataPhase();
   }
 
-  std::unique_ptr<ntcp2::router::Info> ri;
+  std::unique_ptr<Info> ri;
 };
 
 TEST_CASE_METHOD(
@@ -54,7 +57,7 @@ TEST_CASE_METHOD(
     "DataPhase initiator and responder encrypt and decrypt a message",
     "[dp]")
 {
-  dp_message.blocks.emplace_back(BlockPtr(new ntcp2::DateTimeBlock()));
+  dp_message.blocks.emplace_back(BlockPtr(new DateTimeBlock()));
 
   REQUIRE_NOTHROW(dp_initiator->Write(dp_message));
   REQUIRE_NOTHROW(dp_responder->Read(dp_message));
@@ -65,10 +68,10 @@ TEST_CASE_METHOD(
     "DataPhase responder encrypts and decrypts a message with blocks",
     "[dp]")
 {
-  ri = std::make_unique<ntcp2::router::Info>();
-  dp_message.blocks.emplace_back(BlockPtr(new ntcp2::DateTimeBlock()));
-  dp_message.blocks.emplace_back(BlockPtr(new ntcp2::RouterInfoBlock(ri.get())));
-  dp_message.blocks.emplace_back(BlockPtr(new ntcp2::PaddingBlock(17)));
+  ri = std::make_unique<Info>();
+  dp_message.blocks.emplace_back(BlockPtr(new DateTimeBlock()));
+  dp_message.blocks.emplace_back(BlockPtr(new RouterInfoBlock(ri.get())));
+  dp_message.blocks.emplace_back(BlockPtr(new PaddingBlock(17)));
 
   REQUIRE_NOTHROW(dp_initiator->Write(dp_message));
   REQUIRE_NOTHROW(dp_responder->Read(dp_message));
@@ -88,18 +91,18 @@ TEST_CASE_METHOD(
     "DataPhase initiator and responder reject invalid MAC",
     "[dp]")
 {
-  dp_message.blocks.emplace_back(BlockPtr(new ntcp2::DateTimeBlock()));
+  dp_message.blocks.emplace_back(BlockPtr(new DateTimeBlock()));
 
   REQUIRE_NOTHROW(dp_initiator->Write(dp_message));
 
   // invalidate ciphertext
-  ntcp2::crypto::RandBytes(dp_message.buffer.data(), dp_message.buffer.size());
+  crypto::RandBytes(dp_message.buffer.data(), dp_message.buffer.size());
   REQUIRE_THROWS(dp_responder->Read(dp_message));
 
   REQUIRE_NOTHROW(dp_responder->Write(dp_message));
 
   // invalidate ciphertext
-  ntcp2::crypto::RandBytes(dp_message.buffer.data(), dp_message.buffer.size());
+  crypto::RandBytes(dp_message.buffer.data(), dp_message.buffer.size());
   REQUIRE_THROWS(dp_initiator->Read(dp_message));
 }
 
@@ -109,8 +112,8 @@ TEST_CASE_METHOD(
     "[dp]")
 {
   // invalid order, padding must be last block
-  dp_message.blocks.emplace_back(BlockPtr(new ntcp2::PaddingBlock(3)));
-  dp_message.blocks.emplace_back(BlockPtr(new ntcp2::DateTimeBlock()));
+  dp_message.blocks.emplace_back(BlockPtr(new PaddingBlock(3)));
+  dp_message.blocks.emplace_back(BlockPtr(new DateTimeBlock()));
 
   REQUIRE_THROWS(dp_initiator->Write(dp_message));
   REQUIRE_THROWS(dp_responder->Write(dp_message));
@@ -118,8 +121,8 @@ TEST_CASE_METHOD(
   dp_message.blocks.clear();
 
   // invalid order, termination must only be followed by padding block
-  dp_message.blocks.emplace_back(BlockPtr(new ntcp2::TerminationBlock()));
-  dp_message.blocks.emplace_back(BlockPtr(new ntcp2::DateTimeBlock()));
+  dp_message.blocks.emplace_back(BlockPtr(new TerminationBlock()));
+  dp_message.blocks.emplace_back(BlockPtr(new DateTimeBlock()));
 
   REQUIRE_THROWS(dp_initiator->Write(dp_message));
   REQUIRE_THROWS(dp_responder->Write(dp_message));
@@ -130,33 +133,32 @@ TEST_CASE_METHOD(
     "DataPhase initiator and responder reject invalid size",
     "[dp]")
 {
-  // add blocks to make message oversized
-  dp_message.blocks.emplace_back(BlockPtr(new ntcp2::TerminationBlock()));
+  namespace block_m = tini2p::meta::block;
 
-  reinterpret_cast<ntcp2::TerminationBlock*>(dp_message.blocks.back().get())
+  // add blocks to make message oversized
+  dp_message.blocks.emplace_back(BlockPtr(new TerminationBlock()));
+
+  reinterpret_cast<TerminationBlock*>(dp_message.blocks.back().get())
       ->add_data()
-      .resize(block::MaxTermAddDataSize);
+      .resize(block_m::MaxTermAddDataSize);
 
   dp_message.blocks.emplace_back(
-      BlockPtr(new ntcp2::PaddingBlock(block::MaxPaddingSize)));
+      BlockPtr(new PaddingBlock(block_m::MaxPaddingSize)));
 
   REQUIRE_THROWS(dp_initiator->Write(dp_message));
   REQUIRE_THROWS(dp_responder->Write(dp_message));
 
   dp_message.blocks.clear();
-  dp_message.blocks.emplace_back(BlockPtr(new ntcp2::DateTimeBlock()));
+  dp_message.blocks.emplace_back(BlockPtr(new DateTimeBlock()));
   REQUIRE_NOTHROW(dp_initiator->Write(dp_message));
 
   // invalidate the size in the raw message buffer
-  ntcp2::crypto::RandBytes(dp_message.buffer.data(), meta::SizeSize);
+  crypto::RandBytes(dp_message.buffer.data(), meta::data_phase::SizeSize);
   REQUIRE_THROWS(dp_responder->Read(dp_message));
 }
 
 TEST_CASE("DataPhase rejects null handshake state", "[dp]")
 {
-  using Initiator = ntcp2::DataPhase<ntcp2::Initiator>; 
-  using Responder = ntcp2::DataPhase<ntcp2::Responder>; 
-
-  REQUIRE_THROWS(Initiator(nullptr));
-  REQUIRE_THROWS(Responder(nullptr));
+  REQUIRE_THROWS(DataPhase<Initiator>(nullptr));
+  REQUIRE_THROWS(DataPhase<Responder>(nullptr));
 }

@@ -42,21 +42,19 @@ struct DataPhaseKDFFixture : public MockHandshake
     ValidSessionConfirmed();
 
     // Switch roles according to spec
-    initiator = std::make_unique<ntcp2::DataPhaseKDF>(
-        responder_state, ntcp2::Initiator());
-    responder = std::make_unique<ntcp2::DataPhaseKDF>(
-        initiator_state, ntcp2::Responder());
+    initiator = std::make_unique<DataPhaseKDF>(responder_state, Initiator());
+    responder = std::make_unique<DataPhaseKDF>(initiator_state, Responder());
   }
 
-  std::unique_ptr<ntcp2::DataPhaseKDF> initiator;
-  std::unique_ptr<ntcp2::DataPhaseKDF> responder;
+  std::unique_ptr<DataPhaseKDF> initiator;
+  std::unique_ptr<DataPhaseKDF> responder;
 };
 
 TEST_CASE_METHOD(DataPhaseKDFFixture, "DataPhaseKDF generates keys", "[dpkdf]")
 {
   using Catch::Matchers::Equals;
   using vec = std::vector<std::uint8_t>;
-  using ntcp2::meta::data_phase::Direction;
+  using tini2p::meta::ntcp2::data_phase::Direction;
 
   boost::endian::big_uint16_t tmp = 17, msg_len = 17;
   constexpr const bool alice_to_bob = true;
@@ -92,5 +90,5 @@ TEST_CASE_METHOD(DataPhaseKDFFixture, "DataPhaseKDF generates keys", "[dpkdf]")
 
 TEST_CASE("DataPhaseKDF rejects null handshake state", "[dp]")
 {
-  REQUIRE_THROWS(ntcp2::DataPhaseKDF(nullptr, ntcp2::Role()));
+  REQUIRE_THROWS(DataPhaseKDF(nullptr, Role()));
 }

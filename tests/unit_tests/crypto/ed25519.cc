@@ -32,8 +32,8 @@
 
 #include "src/crypto/ed25519.h"
 
-namespace meta = ntcp2::meta::crypto;
-namespace crypto = ntcp2::crypto;
+namespace meta = tini2p::meta::crypto;
+namespace crypto = tini2p::crypto;
 
 struct Ed25519Fixture
 {

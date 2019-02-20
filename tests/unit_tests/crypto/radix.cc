@@ -84,11 +84,11 @@ TEST_CASE_METHOD(RadixFixture, "Radix has valid alphabet", "[radix]")
 
   /// @brief RFC 4648 alphabet
   const std::string base32("abcdefghijklmnopqrstuvwxyz234567");
-  REQUIRE_THAT(base32, Equals(ntcp2::crypto::Base32::GetAlphabet()));
+  REQUIRE_THAT(base32, Equals(tini2p::crypto::Base32::GetAlphabet()));
 
   /// @brief I2P-defined alphabet
   const std::string base64("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-~");
-  REQUIRE_THAT(base64, Equals(ntcp2::crypto::Base64::GetAlphabet()));
+  REQUIRE_THAT(base64, Equals(tini2p::crypto::Base64::GetAlphabet()));
 }
 
 TEST_CASE_METHOD(RadixFixture, "Radix Base32 encodes a dest hash", "[radix]")
@@ -99,12 +99,12 @@ TEST_CASE_METHOD(RadixFixture, "Radix Base32 encodes a dest hash", "[radix]")
       "s25c75a4upjbbd6gf2q34m4zwksx5zgnzjst4rzoooxxryfo4usq");
 
   const std::string encoded(
-      ntcp2::crypto::Base32::Encode(dest_hash.data(), dest_hash.size()));
+      tini2p::crypto::Base32::Encode(dest_hash.data(), dest_hash.size()));
 
   REQUIRE_THAT(base32, Equals(encoded));
 
   const std::vector<std::uint8_t> decoded(
-      ntcp2::crypto::Base32::Decode(encoded.c_str(), encoded.size()));
+      tini2p::crypto::Base32::Decode(encoded.c_str(), encoded.size()));
 
   REQUIRE_THAT(decoded, Equals(dest_hash));
 }
@@ -116,12 +116,12 @@ TEST_CASE_METHOD(RadixFixture, "Radix Base64 encodes a dest hash", "[radix]")
   const std::string base64("lrov9Byj0hCPxi6hvjOZsqV-5M3KZT5HLnOveOCu5SU=");
 
   const std::string encoded(
-      ntcp2::crypto::Base64::Encode(dest_hash.data(), dest_hash.size()));
+      tini2p::crypto::Base64::Encode(dest_hash.data(), dest_hash.size()));
 
   REQUIRE_THAT(base64, Equals(encoded));
 
   const std::vector<std::uint8_t> decoded(
-      ntcp2::crypto::Base64::Decode(encoded.c_str(), encoded.size()));
+      tini2p::crypto::Base64::Decode(encoded.c_str(), encoded.size()));
 
   REQUIRE_THAT(decoded, Equals(dest_hash));
 }
@@ -133,12 +133,12 @@ TEST_CASE_METHOD(RadixFixture, "Radix Base64 encodes full destination", "[radix]
   const std::string base64("8fbeyRjtUfDUuyr9f5ZSy~cd-3GMLQxG-o7-OeBGZImvS-E2sdun1mSoLvubufNQig4J-mtC3qYzbE3NIESuuc-FrfjO69nKF0Y7QvxSJ-d8EtC59UAOix-1QSO8oP3QA914s~JImAz8MZEPbK49IWJesvB9dxsFFOA7iomZAlftw9uNE18kgBdGRw36-3tfQdVL8QBkX82hYy~rkIYATL1Zoq~15qiGUFLEG4TcEBmm1s~7qS0JJLN-UwWKT5GEBZm4EGcIcojAQ~Oz3e8KY2IV-NyD0Wa4jiuy28ULd6qqpZVAPNwf8RNeysDAeX4~CaPpZFTYKJKN~6qFpO3xLtcoJ12rMfG6uMwgO-t4QsYvmCt6MTH~kL4gz-mISv5pCGzP907Ih4DI~pkqF90rP0gh~3VIcMfAi1N8FGsZXn8CdVr5cjqIDNPmNbpxnh2iVURDE5yqbOzqTseCbk2ybzvcChTlYujMSEO1Nvxs8VX3pyrq7bcFCyW0qrxis2uKBQAEAAcAAA==");
 
   const std::string encoded(
-      ntcp2::crypto::Base64::Encode(dest.data(), dest.size()));
+      tini2p::crypto::Base64::Encode(dest.data(), dest.size()));
 
   REQUIRE_THAT(base64, Equals(encoded));
 
   const std::vector<std::uint8_t> decoded(
-      ntcp2::crypto::Base64::Decode(encoded.c_str(), encoded.size()));
+      tini2p::crypto::Base64::Decode(encoded.c_str(), encoded.size()));
 
   REQUIRE_THAT(decoded, Equals(dest));
 }
@@ -146,16 +146,16 @@ TEST_CASE_METHOD(RadixFixture, "Radix Base64 encodes full destination", "[radix]
 TEST_CASE_METHOD(RadixFixture, "Radix rejects invalid encoding", "[radix]")
 {
   const std::string base32("1!@#$%^&*()_-+=");
-  REQUIRE_THROWS(ntcp2::crypto::Base32::Decode(base32.c_str(), base32.size()));
+  REQUIRE_THROWS(tini2p::crypto::Base32::Decode(base32.c_str(), base32.size()));
 
   const std::string base64("!@#$%^&*()_-+");
-  REQUIRE_THROWS(ntcp2::crypto::Base64::Decode(base64.c_str(), base64.size()));
+  REQUIRE_THROWS(tini2p::crypto::Base64::Decode(base64.c_str(), base64.size()));
 }
 
 TEST_CASE_METHOD(RadixFixture, "Radix rejects null arguments", "[radix]")
 {
-  REQUIRE_THROWS(ntcp2::crypto::Base32::Encode(nullptr, 0));
-  REQUIRE_THROWS(ntcp2::crypto::Base32::Decode(nullptr, 0));
-  REQUIRE_THROWS(ntcp2::crypto::Base64::Encode(nullptr, 0));
-  REQUIRE_THROWS(ntcp2::crypto::Base64::Decode(nullptr, 0));
+  REQUIRE_THROWS(tini2p::crypto::Base32::Encode(nullptr, 0));
+  REQUIRE_THROWS(tini2p::crypto::Base32::Decode(nullptr, 0));
+  REQUIRE_THROWS(tini2p::crypto::Base64::Encode(nullptr, 0));
+  REQUIRE_THROWS(tini2p::crypto::Base64::Decode(nullptr, 0));
 }

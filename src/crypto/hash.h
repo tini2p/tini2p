@@ -39,7 +39,7 @@
 
 #include "src/exception/exception.h"
 
-namespace ntcp2
+namespace tini2p
 {
 namespace crypto
 {
@@ -66,6 +66,6 @@ inline void HmacSha256(const HmacKey& key, const Input& input, Digest& digest)
 }
 }  // namespace hash
 }  // namespace crypto
-}  // namespace ntcp2
+}  // namespace tini2p
 
 #endif  // SRC_CRYPTO_HASH_H_

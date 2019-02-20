@@ -33,21 +33,23 @@
 #include <boost/any.hpp>
 #include <boost/variant.hpp>
 
-#include "src/ntcp2/blocks/date_time.h"
-#include "src/ntcp2/blocks/i2np.h"
-#include "src/ntcp2/blocks/options.h"
-#include "src/ntcp2/blocks/padding.h"
-#include "src/ntcp2/blocks/router_info.h"
-#include "src/ntcp2/blocks/termination.h"
+#include "src/data/blocks/date_time.h"
+#include "src/data/blocks/i2np.h"
+#include "src/data/blocks/options.h"
+#include "src/data/blocks/padding.h"
+#include "src/data/blocks/router_info.h"
+#include "src/data/blocks/termination.h"
 
 #include "src/ntcp2/data_phase/kdf.h"
 
+namespace tini2p
+{
 namespace ntcp2
 {
 /// @struct DataPhaseMessage
 struct DataPhaseMessage
 {
-  std::vector<std::unique_ptr<ntcp2::Block>> blocks;
+  std::vector<std::unique_ptr<tini2p::data::Block>> blocks;
   std::vector<std::uint8_t> buffer;
 
   boost::endian::big_uint16_t size() const
@@ -80,8 +82,8 @@ class DataPhase
   /// @param message DataPhase message to write
   void Write(DataPhaseMessage& message)
   {
-    namespace meta = ntcp2::meta::data_phase;
-    namespace block = ntcp2::meta::block;
+    namespace meta = tini2p::meta::ntcp2::data_phase;
+    namespace block = tini2p::meta::block;
 
     const exception::Exception ex{"DataPhase", __func__};
 
@@ -95,7 +97,7 @@ class DataPhase
     const auto dir = role_.id() == noise::InitiatorRole ? meta::BobToAlice
                                                         : meta::AliceToBob;
 
-    ntcp2::BytesWriter<decltype(message.buffer)> writer(message.buffer);
+    tini2p::BytesWriter<decltype(message.buffer)> writer(message.buffer);
 
     // obfuscate message length
     kdf_.ProcessLength(length, dir);
@@ -136,7 +138,7 @@ class DataPhase
   /// @param deobfs_len Flag to de-obfuscate the message length
   void Read(DataPhaseMessage& message, const bool deobfs_len = true)
   {
-    namespace meta = ntcp2::meta::data_phase;
+    namespace meta = tini2p::meta::ntcp2::data_phase;
 
     const exception::Exception ex{"DataPhase", __func__};
 
@@ -145,7 +147,7 @@ class DataPhase
       ex.throw_ex<std::length_error>("invalid ciphertext size.");
 
     boost::endian::big_uint16_t length;
-    ntcp2::read_bytes(buf.data(), length);
+    tini2p::read_bytes(buf.data(), length);
 
     const auto dir = role_.id() == noise::InitiatorRole ? meta::AliceToBob
                                                         : meta::BobToAlice;
@@ -172,12 +174,14 @@ class DataPhase
  private:
   void ParseBlocks(DataPhaseMessage& message)
   {
-    using BlockPtr = std::unique_ptr<ntcp2::Block>;
+    namespace block_m = tini2p::meta::block;
+
+    using BlockPtr = std::unique_ptr<tini2p::data::Block>;
 
     const exception::Exception ex{"DataPhase", __func__};
 
-    ntcp2::BytesReader<decltype(message.buffer)> reader(message.buffer);
-    reader.skip_bytes(meta::block::SizeSize);
+    tini2p::BytesReader<decltype(message.buffer)> reader(message.buffer);
+    reader.skip_bytes(block_m::SizeSize);
 
     bool last_block = false;
 
@@ -186,36 +190,36 @@ class DataPhase
     while (reader.gcount() > crypto::hash::Poly1305Len)
       {
         std::uint8_t type;
-        ntcp2::read_bytes(&message.buffer[reader.count()], type);
+        tini2p::read_bytes(&message.buffer[reader.count()], type);
 
         boost::endian::big_uint16_t size;
-        ntcp2::read_bytes(
-            &message.buffer[reader.count() + meta::block::SizeOffset], size);
+        tini2p::read_bytes(
+            &message.buffer[reader.count() + block_m::SizeOffset], size);
 
         const auto b = message.buffer.begin() + reader.count();
-        const auto e = b + meta::block::HeaderSize + size;
+        const auto e = b + block_m::HeaderSize + size;
 
         // final block(s) must be: padding or termination->padding
         //   disallows multiple padding blocks
-        if (last_block && blocks.back()->type() != meta::block::TerminationID)
+        if (last_block && blocks.back()->type() != block_m::TerminationID)
           ex.throw_ex<std::logic_error>("invalid block ordering.");
 
-        if (type == meta::block::DateTimeID)
-          blocks.emplace_back(BlockPtr(new ntcp2::DateTimeBlock(b, e)));
-        else if (type == meta::block::I2NPMessageID)
-          blocks.emplace_back(BlockPtr(new ntcp2::I2NPBlock(b, e)));
-        else if (type == meta::block::OptionsID)
-          blocks.emplace_back(BlockPtr(new ntcp2::OptionsBlock(b, e)));
-        else if (type == meta::block::RouterInfoID)
-          blocks.emplace_back(BlockPtr(new ntcp2::RouterInfoBlock(b, e)));
-        else if (type == meta::block::PaddingID)
+        if (type == block_m::DateTimeID)
+          blocks.emplace_back(BlockPtr(new tini2p::data::DateTimeBlock(b, e)));
+        else if (type == block_m::I2NPMessageID)
+          blocks.emplace_back(BlockPtr(new tini2p::data::I2NPBlock(b, e)));
+        else if (type == block_m::OptionsID)
+          blocks.emplace_back(BlockPtr(new tini2p::data::OptionsBlock(b, e)));
+        else if (type == block_m::RouterInfoID)
+          blocks.emplace_back(BlockPtr(new tini2p::data::RouterInfoBlock(b, e)));
+        else if (type == block_m::PaddingID)
           {
-            blocks.emplace_back(BlockPtr(new ntcp2::PaddingBlock(b, e)));
+            blocks.emplace_back(BlockPtr(new tini2p::data::PaddingBlock(b, e)));
             last_block = true;
           }
-        else if (type == meta::block::TerminationID)
+        else if (type == block_m::TerminationID)
           {
-            blocks.emplace_back(BlockPtr(new ntcp2::TerminationBlock(b, e)));
+            blocks.emplace_back(BlockPtr(new tini2p::data::TerminationBlock(b, e)));
             last_block = true;
           }
         else
@@ -227,5 +231,6 @@ class DataPhase
   }
 };
 }  // namespace ntcp2
+}  // namespace tini2p
 
 #endif  // SRC_NTCP2_DATA_PHASE_DATA_PHASE_H_

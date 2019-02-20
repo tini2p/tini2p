@@ -32,7 +32,7 @@
 
 #include <cryptopp/integer.h>
 
-namespace ntcp2
+namespace tini2p
 {
 namespace meta
 {
@@ -68,6 +68,6 @@ static const CryptoPP::Integer elgp(elgp_, crypto::ModuloSize), elgg(2);
 }  // namespace constants
 }  // namespace crypto
 }  // namespace meta
-}  // namespace ntcp2
+}  // namespace tini2p
 
 #endif  // SRC_CRYPTO_CONSTANTS_H_

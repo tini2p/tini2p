@@ -34,7 +34,7 @@
 
 #include "src/crypto/rand.h"
 
-namespace ntcp2
+namespace tini2p
 {
 namespace crypto
 {
@@ -59,16 +59,16 @@ struct KeyIV
 /// @return AES key and IV
 inline KeyIV create_key_iv()
 {
-  ntcp2::crypto::aes::Key key;
-  ntcp2::crypto::aes::IV iv;
+  Key key;
+  IV iv;
 
-  crypto::RandBytes(key.data(), key.size());
-  crypto::RandBytes(iv.data(), iv.size());
+  RandBytes(key.data(), key.size());
+  RandBytes(iv.data(), iv.size());
 
   return {key, iv};
 }
 }  // namespace aes
 }  // namespace crypto
-}  // namespace ntcp2
+}  // namespace tini2p
 
 #endif  // SRC_CRYPTO_KEY_AES_H_

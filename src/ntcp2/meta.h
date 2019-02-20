@@ -33,9 +33,11 @@
 #include <chrono>
 #include <cstdint>
 
-namespace ntcp2
+namespace tini2p
 {
 namespace meta
+{
+namespace ntcp2
 {
 enum Sizes : std::uint8_t
 {
@@ -52,7 +54,8 @@ inline const char* name()
 {
   return "Noise_XKaesobfse+hs2+hs3_25519_ChaChaPoly_SHA256";
 }
-}  // namespace meta
 }  // namespace ntcp2
+}  // namespace meta
+}  // namespace tini2p
 
 #endif  // SRC_NTCP2_META_H_

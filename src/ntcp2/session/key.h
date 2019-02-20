@@ -32,6 +32,8 @@
 
 #include "src/crypto/key/x25519.h"
 
+namespace tini2p
+{
 namespace ntcp2
 {
 /// @struct SessionKey
@@ -54,5 +56,6 @@ struct SessionKey
   }
 };
 }  // namespace ntcp2
+}  // namespace tini2p
 
 #endif  // SRC_NTCP2_SESSION_KEY_H_

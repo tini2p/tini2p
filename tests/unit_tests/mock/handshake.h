@@ -34,28 +34,34 @@
 #include "src/ntcp2/session_confirmed/session_confirmed.h"
 #include "src/ntcp2/data_phase/data_phase.h"
 
+namespace crypto = tini2p::crypto;
+namespace exception = tini2p::exception;
+namespace meta = tini2p::meta::ntcp2;
+
+using namespace tini2p::ntcp2;
+
 /// @brief Container for performing a valid mock handshake
 struct MockHandshake
 {
   MockHandshake()
-      : remote_info(new ntcp2::router::Info()),
-        local_info(new ntcp2::router::Info()),
+      : remote_info(new tini2p::data::Info()),
+        local_info(new tini2p::data::Info()),
         sco_message(
             local_info.get(),
-            ntcp2::crypto::RandInRange(
-                ntcp2::meta::session_confirmed::MinPaddingSize,
-                ntcp2::meta::session_confirmed::MaxPaddingSize)),
+            crypto::RandInRange(
+                meta::session_confirmed::MinPaddingSize,
+                meta::session_confirmed::MaxPaddingSize)),
         srq_message(
             sco_message.payload_size(),
-            ntcp2::crypto::RandInRange(
-                ntcp2::meta::session_request::MinPaddingSize,
-                ntcp2::meta::session_request::MaxPaddingSize)),
+            crypto::RandInRange(
+                meta::session_request::MinPaddingSize,
+                meta::session_request::MaxPaddingSize)),
         scr_message()
   {
-    const ntcp2::exception::Exception ex{"MockHandshake", __func__};
+    const exception::Exception ex{"MockHandshake", __func__};
 
-    ntcp2::noise::init_handshake<ntcp2::Initiator>(&initiator_state, ex);
-    ntcp2::noise::init_handshake<ntcp2::Responder>(&responder_state, ex);
+    noise::init_handshake<Initiator>(&initiator_state, ex);
+    noise::init_handshake<Responder>(&responder_state, ex);
 
     InitializeSessionRequest();
   }
@@ -65,10 +71,10 @@ struct MockHandshake
   {
     const auto& ident_hash = remote_info->identity().hash();
 
-    srq_initiator = std::make_unique<ntcp2::SessionRequest<ntcp2::Initiator>>(
+    srq_initiator = std::make_unique<SessionRequest<Initiator>>(
         initiator_state, ident_hash, remote_info->iv());
 
-    srq_responder = std::make_unique<ntcp2::SessionRequest<ntcp2::Responder>>(
+    srq_responder = std::make_unique<SessionRequest<Responder>>(
         responder_state, ident_hash, remote_info->iv());
   }
 
@@ -90,10 +96,10 @@ struct MockHandshake
   /// @detail Roles are switched according to Noise spec
   void InitializeSessionCreated()
   {
-    scr_initiator = std::make_unique<ntcp2::SessionCreated<ntcp2::Initiator>>(
+    scr_initiator = std::make_unique<SessionCreated<Initiator>>(
         responder_state, srq_message, router_hash, iv);
 
-    scr_responder = std::make_unique<ntcp2::SessionCreated<ntcp2::Responder>>(
+    scr_responder = std::make_unique<SessionCreated<Responder>>(
         initiator_state, srq_message, router_hash, iv);
   }
 
@@ -110,10 +116,10 @@ struct MockHandshake
   /// @detail Roles are switched according to Noise spec
   void InitializeSessionConfirmed()
   {
-    sco_initiator = std::make_unique<ntcp2::SessionConfirmed<ntcp2::Initiator>>(
+    sco_initiator = std::make_unique<SessionConfirmed<Initiator>>(
         initiator_state, scr_message);
 
-    sco_responder = std::make_unique<ntcp2::SessionConfirmed<ntcp2::Responder>>(
+    sco_responder = std::make_unique<SessionConfirmed<Responder>>(
         responder_state, scr_message);
   }
 
@@ -129,35 +135,33 @@ struct MockHandshake
   /// @brief Initialize a DataPhase exchange after successful SessionConfirmed exchange
   void InitializeDataPhase()
   {
-    dp_initiator =
-        std::make_unique<ntcp2::DataPhase<ntcp2::Initiator>>(responder_state);
-    dp_responder =
-        std::make_unique<ntcp2::DataPhase<ntcp2::Responder>>(initiator_state);
+    dp_initiator = std::make_unique<DataPhase<Initiator>>(responder_state);
+    dp_responder = std::make_unique<DataPhase<Responder>>(initiator_state);
   }
 
   NoiseHandshakeState *initiator_state, *responder_state;
 
-  ntcp2::crypto::x25519::PubKey remote_key;
-  ntcp2::router::IdentHash router_hash;
-  ntcp2::crypto::aes::IV iv;
-  std::unique_ptr<ntcp2::router::Info> remote_info, local_info;
+  crypto::x25519::PubKey remote_key;
+  tini2p::data::IdentHash router_hash;
+  crypto::aes::IV iv;
+  std::unique_ptr<tini2p::data::Info> remote_info, local_info;
 
   // handshake messages, session confirmed must be initialized first to initialize the session request message
-  ntcp2::SessionConfirmedMessage sco_message;
-  ntcp2::SessionRequestMessage srq_message;
-  ntcp2::SessionCreatedMessage scr_message;
-  ntcp2::DataPhaseMessage dp_message;
+  SessionConfirmedMessage sco_message;
+  SessionRequestMessage srq_message;
+  SessionCreatedMessage scr_message;
+  DataPhaseMessage dp_message;
 
   // handshake message handlers
-  std::unique_ptr<ntcp2::SessionRequest<ntcp2::Initiator>> srq_initiator; 
-  std::unique_ptr<ntcp2::SessionRequest<ntcp2::Responder>> srq_responder; 
+  std::unique_ptr<SessionRequest<Initiator>> srq_initiator; 
+  std::unique_ptr<SessionRequest<Responder>> srq_responder; 
 
-  std::unique_ptr<ntcp2::SessionCreated<ntcp2::Initiator>> scr_initiator; 
-  std::unique_ptr<ntcp2::SessionCreated<ntcp2::Responder>> scr_responder; 
+  std::unique_ptr<SessionCreated<Initiator>> scr_initiator; 
+  std::unique_ptr<SessionCreated<Responder>> scr_responder; 
 
-  std::unique_ptr<ntcp2::SessionConfirmed<ntcp2::Initiator>> sco_initiator; 
-  std::unique_ptr<ntcp2::SessionConfirmed<ntcp2::Responder>> sco_responder; 
+  std::unique_ptr<SessionConfirmed<Initiator>> sco_initiator; 
+  std::unique_ptr<SessionConfirmed<Responder>> sco_responder; 
 
-  std::unique_ptr<ntcp2::DataPhase<ntcp2::Initiator>> dp_initiator; 
-  std::unique_ptr<ntcp2::DataPhase<ntcp2::Responder>> dp_responder; 
+  std::unique_ptr<DataPhase<Initiator>> dp_initiator; 
+  std::unique_ptr<DataPhase<Responder>> dp_responder; 
 };

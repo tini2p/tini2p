@@ -36,12 +36,14 @@
 #include "src/crypto/hash.h"
 #include "src/crypto/siphash.h"
 
-#include "src/ntcp2/bytes.h"
+#include "src/bytes.h"
 #include "src/ntcp2/noise.h"
 #include "src/ntcp2/role.h"
 
 #include "src/ntcp2/data_phase/meta.h"
 
+namespace tini2p
+{
 namespace ntcp2
 {
 /// @class DataPhaseKDF
@@ -90,7 +92,7 @@ class DataPhaseKDF
   /// @detail Advances SipHash key state, deriving a new IV every call, see spec
   void ProcessLength(
       boost::endian::big_uint16_t& length,
-      const meta::data_phase::Direction direction)
+      const meta::ntcp2::data_phase::Direction direction)
   {
     length ^= DeriveMask(direction);
   }
@@ -103,25 +105,27 @@ class DataPhaseKDF
 
   /// Get a pointer to the cipherstate for messages from Alice to Bob
   decltype(alice_to_bob_) cipherstate(
-      meta::data_phase::Direction direction) noexcept
+      meta::ntcp2::data_phase::Direction direction) noexcept
   {
-    return direction == meta::data_phase::AliceToBob ? alice_to_bob_
+    return direction == meta::ntcp2::data_phase::AliceToBob ? alice_to_bob_
                                                      : bob_to_alice_;
   }
 
  private:
   void InitSipKeys(crypto::x25519::PubKey& temp_key)
   {
-    std::array<std::uint8_t, meta::data_phase::SipMasterInSize> sip_master_in;
+    namespace meta = tini2p::meta::ntcp2::data_phase;
 
-    const std::array<std::uint8_t, meta::data_phase::AskStrSize> ask_str{
+    std::array<std::uint8_t, meta::SipMasterInSize> sip_master_in;
+
+    const std::array<std::uint8_t, meta::AskStrSize> ask_str{
         {0x61, 0x73, 0x6B, 0x01}};  // "ask" || byte(0x01)
 
-    const std::array<std::uint8_t, meta::data_phase::SipStrSize> sip_str{
+    const std::array<std::uint8_t, meta::SipStrSize> sip_str{
         {0x73, 0x69, 0x70, 0x68, 0x61, 0x73, 0x68}};  // "siphash"
 
     // concat handshake hash: h || "siphash"
-    ntcp2::BytesWriter<decltype(sip_master_in)> sip_in_writer(sip_master_in);
+    tini2p::BytesWriter<decltype(sip_master_in)> sip_in_writer(sip_master_in);
     sip_in_writer.write_data(h_);
     sip_in_writer.write_data(sip_str);
 
@@ -138,7 +142,7 @@ class DataPhaseKDF
     std::array<std::uint8_t, crypto::hash::Sha256Len> sip_keys_ab, sip_keys_ba;
 
     crypto::hash::HmacSha256(temp_key, byte_one, sip_keys_ab);
-    ntcp2::BytesReader<decltype(sip_keys_ab)> ab_reader(sip_keys_ab);
+    tini2p::BytesReader<decltype(sip_keys_ab)> ab_reader(sip_keys_ab);
     ab_reader.read_data(key_pt1_ab_);
     ab_reader.read_data(key_pt2_ab_);
     ab_reader.read_data(iv_ab_);
@@ -148,18 +152,18 @@ class DataPhaseKDF
     sip_keys_ba_in.back() = 0x02;
 
     crypto::hash::HmacSha256(temp_key, sip_keys_ba_in, sip_keys_ba);
-    ntcp2::BytesReader<decltype(sip_keys_ba)> ba_reader(sip_keys_ba);
+    tini2p::BytesReader<decltype(sip_keys_ba)> ba_reader(sip_keys_ba);
     ba_reader.read_data(key_pt1_ba_);
     ba_reader.read_data(key_pt2_ba_);
     ba_reader.read_data(iv_ba_);
   }
 
   boost::endian::big_uint16_t DeriveMask(
-      const meta::data_phase::Direction direction)
+      const meta::ntcp2::data_phase::Direction direction)
   {
     boost::endian::big_uint16_t mask;
     crypto::hash::SipHashDigest digest;
-    if (direction == meta::data_phase::AliceToBob)
+    if (direction == meta::ntcp2::data_phase::AliceToBob)
       {
         crypto::hash::SipHash(key_pt1_ab_, key_pt2_ab_, iv_ab_, digest);
         std::copy(
@@ -171,10 +175,11 @@ class DataPhaseKDF
         std::copy(
             digest.begin(), digest.begin() + iv_ba_.size(), iv_ba_.begin());
       }
-    ntcp2::read_bytes(digest.data(), mask);
+    tini2p::read_bytes(digest.data(), mask);
     return mask;
   }
 };
 }  // namespace ntcp2
+}  // namespace tini2p
 
 #endif  // SRC_NTCP2_DATA_PHASE_KDF_H_

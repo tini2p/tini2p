@@ -34,7 +34,7 @@
 
 #include "src/crypto/rand.h"
 
-namespace ntcp2
+namespace tini2p
 {
 namespace crypto
 {
@@ -76,10 +76,10 @@ inline void SipHash(
   hash.TruncatedFinal(digest.data(), digest.size());
 
   // overwrite the temporary key
-  crypto::RandBytes(key.data(), key.size());
+  RandBytes(key.data(), key.size());
 }
 }  // namespace hash
 }  // namespace crypto
-}  // namespace ntcp2
+}  // namespace tini2p
 
 #endif  // SRC_CRYPTO_HASH_SIPHASH_H_

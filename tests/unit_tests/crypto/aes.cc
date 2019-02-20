@@ -31,7 +31,7 @@
 
 #include "src/crypto/aes.h"
 
-namespace crypto = ntcp2::crypto;
+namespace crypto = tini2p::crypto;
 
 struct AESFixture
 {

@@ -43,14 +43,13 @@ struct SessionConfirmedKDFFixture : public MockHandshake
 
     // switch roles from SessionRequest
     initiator_kdf =
-        std::make_unique<ntcp2::SessionCreatedConfirmedKDF>(responder_state);
+        std::make_unique<SessionCreatedConfirmedKDF>(responder_state);
 
     responder_kdf =
-        std::make_unique<ntcp2::SessionCreatedConfirmedKDF>(initiator_state);
+        std::make_unique<SessionCreatedConfirmedKDF>(initiator_state);
   }
 
-  std::unique_ptr<ntcp2::SessionCreatedConfirmedKDF> initiator_kdf;
-  std::unique_ptr<ntcp2::SessionCreatedConfirmedKDF> responder_kdf;
+  std::unique_ptr<SessionCreatedConfirmedKDF> initiator_kdf, responder_kdf;
 };
 
 TEST_CASE_METHOD(

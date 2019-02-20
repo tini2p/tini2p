@@ -29,9 +29,12 @@
 
 #ifndef SRC_NTCP2_SESSION_META_H_
 #define SRC_NTCP2_SESSION_META_H_
-namespace ntcp2
+
+namespace tini2p
 {
 namespace meta
+{
+namespace ntcp2
 {
 namespace session
 {
@@ -49,7 +52,8 @@ enum struct IP_t : bool
   v6,
 };
 }  // namespace session
-}  // namespace meta
 }  // namespace ntcp2
+}  // namespace meta
+}  // namespace tini2p
 
 #endif  // SRC_NTCP2_SESSION_META_H_

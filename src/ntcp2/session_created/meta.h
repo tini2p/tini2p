@@ -30,17 +30,19 @@
 #ifndef SRC_NTCP2_SESSION_CREATED_META_H_
 #define SRC_NTCP2_SESSION_CREATED_META_H_
 
-namespace ntcp2
+namespace tini2p
 {
 namespace meta
+{
+namespace ntcp2
 {
 namespace session_created
 {
 enum Sizes : std::uint16_t
 {
   OptionsSize = 16,
-  Y = ntcp2::crypto::x25519::PubKeyLen,
-  CiphertextSize = OptionsSize + ntcp2::crypto::hash::Poly1305Len,
+  Y = tini2p::crypto::x25519::PubKeyLen,
+  CiphertextSize = OptionsSize + tini2p::crypto::hash::Poly1305Len,
   NoisePayloadSize = Y + CiphertextSize,
   MinSize = NoisePayloadSize,
   MaxSize = 65535,
@@ -60,7 +62,8 @@ enum MessageOffsets : std::uint8_t
   PaddingOffset = NoisePayloadSize,
 };
 }  // namespace session_created
-}  // namespace meta
 }  // namespace ntcp2
+}  // namespace meta
+}  // namespace tini2p
 
 #endif  // SRC_NTCP2_SESSION_CREATED_META_H_

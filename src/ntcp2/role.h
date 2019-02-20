@@ -30,6 +30,8 @@
 #ifndef SRC_NTCP2_ROLE_H_
 #define SRC_NTCP2_ROLE_H_
 
+namespace tini2p
+{
 namespace ntcp2
 {
 namespace noise
@@ -96,5 +98,6 @@ class SessionResponder : public Role
   }
 };
 }  // namespace ntcp2
+}  // namespace tini2p
 
 #endif  // SRC_NTCP2_ROLE_H_

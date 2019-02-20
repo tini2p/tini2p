@@ -59,11 +59,9 @@ TEST_CASE_METHOD(
 
 TEST_CASE("SessionCreated rejects null handshake state", "[scr]")
 {
-  using Initiator = ntcp2::SessionCreated<ntcp2::Initiator>; 
-  using Responder = ntcp2::SessionCreated<ntcp2::Responder>; 
-  using ntcp2::router::IdentHash;
-  using ntcp2::crypto::aes::IV;
+  using tini2p::data::IdentHash;
+  using tini2p::crypto::aes::IV;
 
-  REQUIRE_THROWS(Initiator(nullptr, {}, IdentHash(), IV()));
-  REQUIRE_THROWS(Responder(nullptr, {}, IdentHash(), IV()));
+  REQUIRE_THROWS(SessionCreated<Initiator>(nullptr, {}, IdentHash(), IV()));
+  REQUIRE_THROWS(SessionCreated<Responder>(nullptr, {}, IdentHash(), IV()));
 }

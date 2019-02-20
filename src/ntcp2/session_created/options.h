@@ -32,28 +32,28 @@
 
 #include "src/ntcp2/session_created/meta.h"
 
+namespace tini2p
+{
 namespace ntcp2
 {
-namespace session_created
-{
 /// @brief Container for session request options
-struct Options
+struct SessionCreatedOptions
 {
   boost::endian::big_uint16_t pad_len;
   boost::endian::big_uint32_t timestamp;
-  std::array<std::uint8_t, meta::session_created::OptionsSize> buf;
+  std::array<std::uint8_t, meta::ntcp2::session_created::OptionsSize> buffer;
 
-  Options()
+  SessionCreatedOptions()
       : pad_len(crypto::RandInRange(
-            meta::session_created::MinPaddingSize,
-            meta::session_created::MaxPaddingSize)),
-        timestamp(time::now_s())
+            meta::ntcp2::session_created::MinPaddingSize,
+            meta::ntcp2::session_created::MaxPaddingSize)),
+        timestamp(tini2p::time::now_s())
   {
     serialize();
   }
 
-  Options(const std::uint16_t pad_len)
-      : pad_len(pad_len), timestamp(time::now_s())
+  SessionCreatedOptions(const std::uint16_t pad_len)
+      : pad_len(pad_len), timestamp(tini2p::time::now_s())
   {
     serialize();
   }
@@ -64,28 +64,28 @@ struct Options
   void update(const boost::endian::big_uint16_t pad_size)
   {
     pad_len = pad_size;
-    timestamp = time::now_s();
+    timestamp = tini2p::time::now_s();
     serialize();
   }
 
   /// @brief Write request options to buffer
   void serialize()
   {
-    namespace meta = ntcp2::meta::session_created;
+    namespace meta = tini2p::meta::ntcp2::session_created;
 
     check_params({"SessionRequest", __func__});
 
-    ntcp2::write_bytes(&buf[meta::PadLengthOffset], pad_len);
-    ntcp2::write_bytes(&buf[meta::TimestampOffset], timestamp);
+    tini2p::write_bytes(&buffer[meta::PadLengthOffset], pad_len);
+    tini2p::write_bytes(&buffer[meta::TimestampOffset], timestamp);
   }
 
   /// @brief Read request options from buffer
   void deserialize()
   {
-    namespace meta = ntcp2::meta::session_created;
+    namespace meta = tini2p::meta::ntcp2::session_created;
 
-    ntcp2::read_bytes(&buf[meta::PadLengthOffset], pad_len);
-    ntcp2::read_bytes(&buf[meta::TimestampOffset], timestamp);
+    tini2p::read_bytes(&buffer[meta::PadLengthOffset], pad_len);
+    tini2p::read_bytes(&buffer[meta::TimestampOffset], timestamp);
 
     check_params({"SessionRequest", __func__});
   }
@@ -93,15 +93,14 @@ struct Options
  private:
   void check_params(const exception::Exception& ex)
   {
-    if (pad_len > meta::session_created::MaxPaddingSize)
+    if (pad_len > meta::ntcp2::session_created::MaxPaddingSize)
       ex.throw_ex<std::length_error>("invalid padding size.");
 
-    if (!time::check_lag_s(timestamp))
+    if (!tini2p::time::check_lag_s(timestamp))
       ex.throw_ex<std::runtime_error>("invalid timestamp.");
   }
 };
-}  // namespace session_created
 }  // namespace ntcp2
+}  // namespace tini2p
 
 #endif  // SRC_NTCP2_SESSION_CREATED_OPTIONS_H_
-

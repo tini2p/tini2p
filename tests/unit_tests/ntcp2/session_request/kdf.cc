@@ -31,23 +31,24 @@
 
 #include "src/ntcp2/session_request/kdf.h"
 
+using namespace tini2p::ntcp2;
+
 struct SessionRequestKDFFixture
 {
   SessionRequestKDFFixture()
   {
-    const ntcp2::exception::Exception ex{"SessionRequestKDFFixture", __func__};
+    const tini2p::exception::Exception ex{"SessionRequestKDFFixture", __func__};
 
-    ntcp2::noise::init_handshake<ntcp2::Initiator>(&initiator_state, ex);
-    ntcp2::noise::init_handshake<ntcp2::Responder>(&responder_state, ex);
+    noise::init_handshake<Initiator>(&initiator_state, ex);
+    noise::init_handshake<Responder>(&responder_state, ex);
 
-    initiator_kdf = std::make_unique<ntcp2::SessionRequestKDF>(initiator_state);
-    responder_kdf = std::make_unique<ntcp2::SessionRequestKDF>(responder_state);
+    initiator_kdf = std::make_unique<SessionRequestKDF>(initiator_state);
+    responder_kdf = std::make_unique<SessionRequestKDF>(responder_state);
   }
 
   NoiseHandshakeState *initiator_state, *responder_state;
-  std::unique_ptr<ntcp2::SessionRequestKDF> initiator_kdf;
-  std::unique_ptr<ntcp2::SessionRequestKDF> responder_kdf;
-  ntcp2::crypto::x25519::PubKey key;
+  std::unique_ptr<SessionRequestKDF> initiator_kdf, responder_kdf;
+  tini2p::crypto::x25519::PubKey key;
 };
 
 TEST_CASE_METHOD(
@@ -112,5 +113,5 @@ TEST_CASE_METHOD(
 
 TEST_CASE("SessionRequestKDF rejects null handshake state", "[srq_kdf]")
 {
-  REQUIRE_THROWS(ntcp2::SessionRequestKDF(nullptr));
+  REQUIRE_THROWS(SessionRequestKDF(nullptr));
 }

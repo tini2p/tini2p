@@ -35,7 +35,7 @@
 
 #include <noise/protocol/errors.h>
 
-namespace ntcp2
+namespace tini2p
 {
 namespace exception
 {
@@ -66,6 +66,6 @@ struct Exception
 };
 
 }  // namespace exception
-}  // namespace ntcp2
+}  // namespace tini2p
 
 #endif  // SRC_EXCEPTION_EXCEPTION_H_

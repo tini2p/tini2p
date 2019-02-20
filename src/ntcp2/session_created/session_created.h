@@ -35,6 +35,8 @@
 #include "src/ntcp2/session_created/kdf.h"
 #include "src/ntcp2/session_created/message.h"
 
+namespace tini2p
+{
 namespace ntcp2
 {
 /// @brief Session created message handler
@@ -43,9 +45,9 @@ class SessionCreated
 {
   Role_t role_;
   NoiseHandshakeState* state_;
-  ntcp2::SessionCreatedConfirmedKDF kdf_;
-  ntcp2::crypto::aes::CBCEncryption encryption_;
-  ntcp2::crypto::aes::CBCDecryption decryption_;
+  SessionCreatedConfirmedKDF kdf_;
+  tini2p::crypto::aes::CBCEncryption encryption_;
+  tini2p::crypto::aes::CBCDecryption decryption_;
 
  public:
   /// @brief Initialize a session created message handler
@@ -54,9 +56,9 @@ class SessionCreated
   /// @param padding Padding from session requested message
   SessionCreated(
       NoiseHandshakeState* state,
-      const ntcp2::SessionRequestMessage& message,
-      const ntcp2::router::IdentHash& router_hash,
-      const ntcp2::crypto::aes::IV& iv)
+      const SessionRequestMessage& message,
+      const tini2p::data::IdentHash& router_hash,
+      const tini2p::crypto::aes::IV& iv)
       : state_(state),
         kdf_(state),
         encryption_(router_hash, iv),
@@ -83,24 +85,23 @@ class SessionCreated
  private:
   void Write(SessionCreatedMessage& message)
   {
-    namespace x25519 = ntcp2::crypto::x25519;
+    namespace meta = tini2p::meta::ntcp2::session_created;
+    namespace x25519 = tini2p::crypto::x25519;
 
-    using ntcp2::meta::session_created::NoisePayloadSize; 
-
-    const ntcp2::exception::Exception ex{"SessionCreated", __func__};
+    const exception::Exception ex{"SessionCreated", __func__};
 
     NoiseBuffer data /*output*/, payload /*input*/;
 
     // ensure enough room for Noise payload + padding
-    message.data.resize(NoisePayloadSize + message.options.pad_len);
+    message.data.resize(meta::NoisePayloadSize + message.options.pad_len);
     message.options.serialize();
 
-    auto& in = message.options.buf;
+    auto& in = message.options.buffer;
     auto& out = message.data;
 
-    ntcp2::noise::RawBuffers bufs{in.data(), in.size(), out.data(), out.size()};
-    ntcp2::noise::setup_buffers(data, payload, bufs);
-    ntcp2::noise::write_message(state_, &data, &payload, ex);
+    noise::RawBuffers bufs{in.data(), in.size(), out.data(), out.size()};
+    noise::setup_buffers(data, payload, bufs);
+    noise::write_message(state_, &data, &payload, ex);
 
     // encrypt Y in-place
     encryption_.Process(
@@ -113,20 +114,20 @@ class SessionCreated
       std::copy(
           message.padding.begin(),
           message.padding.end(),
-          &message.data[meta::session_created::PaddingOffset]);
+          &message.data[meta::PaddingOffset]);
   }
 
   void Read(SessionCreatedMessage& message)
   {
-    namespace meta = ntcp2::meta::session_created;
-    namespace x25519 = ntcp2::crypto::x25519;
+    namespace meta = tini2p::meta::ntcp2::session_created;
+    namespace x25519 = tini2p::crypto::x25519;
 
     const exception::Exception ex{"SessionCreated", __func__};
 
     NoiseBuffer data /*input*/, payload /*output*/;
 
     auto& in = message.data;
-    auto& out = message.options.buf;
+    auto& out = message.options.buffer;
     const auto& in_size = meta::NoisePayloadSize;
 
     if (in.size() < meta::MinSize || in.size() > meta::MaxSize)
@@ -160,12 +161,13 @@ class SessionCreated
 
   void save_ciphertext(SessionCreatedMessage& message)
   {
-    namespace meta = ntcp2::meta::session_created;
+    namespace meta = tini2p::meta::ntcp2::session_created;
 
     const auto* c = &message.data[meta::CiphertextOffset];
     std::copy(c, c + meta::CiphertextSize, message.ciphertext.data());
   }
 };
 }  // namespace ntcp2
+}  // namespace tini2p
 
 #endif  // SRC_NTCP2_SESSION_CREATED_SESSION_CREATED_H_

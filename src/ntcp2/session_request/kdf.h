@@ -40,6 +40,8 @@
 #include "src/ntcp2/meta.h"
 #include "src/ntcp2/role.h"
 
+namespace tini2p
+{
 namespace ntcp2
 {
 class SessionRequestKDF
@@ -101,5 +103,6 @@ class SessionRequestKDF
   }
 };
 }  // namespace ntcp2
+}  // namespace tini2p
 
 #endif  // SRC_NTCP2_SESSION_REQUEST_KDF_H_

@@ -36,7 +36,7 @@
 
 #include "src/exception/exception.h"
 
-namespace ntcp2
+namespace tini2p
 {
 namespace crypto
 {
@@ -72,6 +72,6 @@ inline Keypair create_keys()
 }
 }  // namespace ed25519
 }  // namespace crypto
-}  // namespace ntcp2
+}  // namespace tini2p
 
 #endif  // SRC_CRYPTO_KEY_ED25519_H_

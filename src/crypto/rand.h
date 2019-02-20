@@ -32,7 +32,7 @@
 
 #include <cryptopp/osrng.h>
 
-namespace ntcp2
+namespace tini2p
 {
 namespace crypto
 {
@@ -69,6 +69,6 @@ inline Int RandInRange(const Int min, const Int max)
   return rand;
 }
 }  // namespace crypto
-}  // namespace ntcp2
+}  // namespace tini2p
 
 #endif  // SRC_CRYPTO_RAND_H_

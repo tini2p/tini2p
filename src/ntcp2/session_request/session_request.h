@@ -37,23 +37,25 @@
 #include "src/crypto/aes.h"
 #include "src/crypto/rand.h"
 
-#include "src/ntcp2/router/info.h"
+#include "src/data/router/info.h"
 
 #include "src/ntcp2/session_request/kdf.h"
 #include "src/ntcp2/session_request/meta.h"
 #include "src/ntcp2/session_request/options.h"
 
+namespace tini2p
+{
 namespace ntcp2
 {
 struct SessionRequestMessage
 {
   std::vector<std::uint8_t> data, padding;
-  std::array<std::uint8_t, ntcp2::meta::session_request::CiphertextSize>
+  std::array<std::uint8_t, tini2p::meta::ntcp2::session_request::CiphertextSize>
       ciphertext;
-  ntcp2::session_request::Options options;
+  SessionRequestOptions options;
 
   SessionRequestMessage()
-      : data(meta::session_request::NoisePayloadSize), options()
+      : data(meta::ntcp2::session_request::NoisePayloadSize), options()
   {
     if (options.pad_len)
     {
@@ -65,7 +67,7 @@ struct SessionRequestMessage
   SessionRequestMessage(
       const std::uint16_t m3p2_len,
       const std::uint16_t pad_len)
-      : data(meta::session_request::NoisePayloadSize + pad_len),
+      : data(meta::ntcp2::session_request::NoisePayloadSize + pad_len),
         options(m3p2_len, pad_len)
   {
     if (pad_len)
@@ -82,8 +84,8 @@ class SessionRequest
   Role_t role_;
   NoiseHandshakeState* state_;
   ntcp2::SessionRequestKDF kdf_;
-  ntcp2::crypto::aes::CBCEncryption encryption_;
-  ntcp2::crypto::aes::CBCDecryption decryption_;
+  tini2p::crypto::aes::CBCEncryption encryption_;
+  tini2p::crypto::aes::CBCDecryption decryption_;
 
  public:
   /// @brief Create a SessionRequest processor for a given destination
@@ -93,7 +95,7 @@ class SessionRequest
   /// @throw Invalid argument on null handshake state
   SessionRequest(
       NoiseHandshakeState* state,
-      const router::IdentHash& router_hash,
+      const tini2p::data::IdentHash& router_hash,
       const crypto::aes::IV& iv)
       : state_(state),
         kdf_(state_),
@@ -141,10 +143,8 @@ class SessionRequest
  private:
   void Write(SessionRequestMessage& message)
   {
-    namespace meta = ntcp2::meta::session_request;
-    namespace x25519 = ntcp2::crypto::x25519;
-
-    using ntcp2::meta::session_request::NoisePayloadSize;
+    namespace meta = tini2p::meta::ntcp2::session_request;
+    namespace x25519 = tini2p::crypto::x25519;
 
     const exception::Exception ex{"SessionRequest", __func__};
 
@@ -152,9 +152,9 @@ class SessionRequest
 
     // ensure enough room to hold Noise payload + padding
     message.data.resize(
-        NoisePayloadSize + (std::uint16_t)message.options.pad_len);
+        meta::NoisePayloadSize + (std::uint16_t)message.options.pad_len);
 
-    auto& in = message.options.buf;
+    auto& in = message.options.buffer;
     auto& out = message.data;
 
     noise::RawBuffers bufs{in.data(), in.size(), out.data(), out.size()};
@@ -180,15 +180,15 @@ class SessionRequest
 
   void Read(SessionRequestMessage& message)
   {
-    namespace meta = ntcp2::meta::session_request;
-    namespace x25519 = ntcp2::crypto::x25519;
+    namespace meta = tini2p::meta::ntcp2::session_request;
+    namespace x25519 = tini2p::crypto::x25519;
 
     const exception::Exception ex{"SessionRequest", __func__};
 
     NoiseBuffer data /*input*/, payload /*output*/;
 
     auto& in = message.data;
-    auto& out = message.options.buf;
+    auto& out = message.options.buffer;
     const auto& in_size = meta::NoisePayloadSize;
 
     if (in.size() < meta::MinSize || in.size() > meta::MaxSize)
@@ -223,12 +223,13 @@ class SessionRequest
 
   void save_ciphertext(SessionRequestMessage& message)
   {
-    namespace meta = ntcp2::meta::session_request;
+    namespace meta = tini2p::meta::ntcp2::session_request;
 
     const auto c = &message.data[meta::CiphertextOffset];
     std::copy(c, c + meta::CiphertextSize, message.ciphertext.data());
   }
 };
 }  // namespace ntcp2
+}  // namespace tini2p
 
 #endif  // SRC_SESSION_REQUEST_SESSION_REQUEST_H_

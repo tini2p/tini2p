@@ -32,7 +32,8 @@
 
 #include <boost/asio.hpp>
 
-#include "src/ntcp2/router/info.h"
+#include "src/data/router/info.h"
+
 #include "src/ntcp2/noise.h"
 
 #include "src/ntcp2/session_request/session_request.h"
@@ -43,6 +44,8 @@
 #include "src/ntcp2/session/meta.h"
 #include "src/ntcp2/session/key.h"
 
+namespace tini2p
+{
 namespace ntcp2
 {
 /// @class Session
@@ -52,17 +55,17 @@ template <class SessionRole>
 class Session
 {
   NoiseHandshakeState* state_;
-  router::Info *dest_, *info_;
-  ntcp2::SessionKey remote_key_, connect_key_;
+  tini2p::data::Info *dest_, *info_;
+  SessionKey remote_key_, connect_key_;
   crypto::aes::IV aes_iv_;
   boost::asio::io_context ctx_;
   boost::asio::ip::tcp::socket sock_;
   boost::asio::ip::tcp::endpoint remote_host_;
-  std::unique_ptr<ntcp2::SessionRequestMessage> srq_msg_;
-  std::unique_ptr<ntcp2::SessionCreatedMessage> scr_msg_;
-  std::unique_ptr<ntcp2::SessionConfirmedMessage> sco_msg_;
-  std::unique_ptr<ntcp2::DataPhaseMessage> dp_msg_;
-  std::unique_ptr<ntcp2::DataPhase<SessionRole>> dp_;
+  std::unique_ptr<SessionRequestMessage> srq_msg_;
+  std::unique_ptr<SessionCreatedMessage> scr_msg_;
+  std::unique_ptr<SessionConfirmedMessage> sco_msg_;
+  std::unique_ptr<DataPhaseMessage> dp_msg_;
+  std::unique_ptr<DataPhase<SessionRole>> dp_;
   std::size_t srq_xfer_, scr_xfer_, sco_xfer_, dp_xfer_;
   std::condition_variable cv_;
   bool ready_;
@@ -79,11 +82,11 @@ class Session
         info_(info),
         ctx_(),
         sock_(ctx_),
-        sco_msg_(new ntcp2::SessionConfirmedMessage(
+        sco_msg_(new SessionConfirmedMessage(
             info_,
             crypto::RandInRange(
-                meta::session_confirmed::MinPaddingSize,
-                meta::session_confirmed::MaxPaddingSize))),
+                tini2p::meta::ntcp2::session_confirmed::MinPaddingSize,
+                tini2p::meta::ntcp2::session_confirmed::MaxPaddingSize))),
         ready_(false)
   {
     const exception::Exception ex{"Session", __func__};
@@ -91,7 +94,7 @@ class Session
     if (!dest || !info)
       ex.throw_ex<std::invalid_argument>("null remote or local RouterInfo.");
 
-    noise::init_handshake<ntcp2::Initiator>(&state_, ex);
+    noise::init_handshake<Initiator>(&state_, ex);
 
     const auto& b64_key = dest_->options().entry(std::string("s"));
     remote_key_.key.Assign(
@@ -121,7 +124,7 @@ class Session
     if (!info)
       ex.throw_ex<std::invalid_argument>("null RouterInfo.");
 
-    noise::init_handshake<ntcp2::Responder>(&state_, ex);
+    noise::init_handshake<Responder>(&state_, ex);
 
     const auto& b64_iv = info_->options().entry(std::string("i"));
     aes_iv_.Assign(
@@ -141,7 +144,7 @@ class Session
   /// @brief Start the NTCP2 session
   void Start(const bool prefer_v6 = true)
   {
-    if (std::is_same<SessionRole, ntcp2::SessionInitiator>::value)
+    if (std::is_same<SessionRole, SessionInitiator>::value)
       Connect(prefer_v6);
     else
       HandleSessionRequest();
@@ -152,7 +155,7 @@ class Session
   void Wait()
   {
     using ms = std::chrono::milliseconds;
-    using ntcp2::meta::session::WaitTimeout;
+    using tini2p::meta::ntcp2::session::WaitTimeout;
 
     std::unique_lock<std::mutex> l(ready_mutex_);
     if (!cv_.wait_for(l, ms(WaitTimeout), [=]() { return ready_; }))
@@ -238,7 +241,7 @@ class Session
  private:
   void CalculateConnectKey()
   {
-    const auto& host = std::is_same<SessionRole, ntcp2::SessionInitiator>::value
+    const auto& host = std::is_same<SessionRole, SessionInitiator>::value
                            ? sock_.local_endpoint().address().to_string()
                            : sock_.remote_endpoint().address().to_string();
 
@@ -311,20 +314,20 @@ class Session
 
   void DoSessionRequest()
   {
-    namespace meta = ntcp2::meta::session_request;
+    namespace meta = tini2p::meta::ntcp2::session_request;
 
     const exception::Exception ex{"Session", __func__};
 
-    if (std::is_same<SessionRole, ntcp2::SessionInitiator>::value)
+    if (std::is_same<SessionRole, SessionInitiator>::value)
       {
-        ntcp2::SessionRequest<ntcp2::Initiator> srq(
+        SessionRequest<Initiator> srq(
             state_, dest_->identity().hash(), aes_iv_);
 
         srq.kdf().set_local_keys(info_->noise_keys());
         srq.kdf().derive_keys(remote_key_.key);
 
         std::lock_guard<std::mutex> lg(msg_mutex_);
-        srq_msg_ = std::make_unique<ntcp2::SessionRequestMessage>(
+        srq_msg_ = std::make_unique<SessionRequestMessage>(
             sco_msg_->payload_size(),
             crypto::RandInRange(meta::MinPaddingSize, meta::MaxPaddingSize));
 
@@ -353,7 +356,7 @@ class Session
     else
       {
         std::lock_guard<std::mutex> lg(msg_mutex_);
-        srq_msg_ = std::make_unique<ntcp2::SessionRequestMessage>();
+        srq_msg_ = std::make_unique<SessionRequestMessage>();
         boost::asio::async_read(
             sock_,
             boost::asio::buffer(srq_msg_->data),
@@ -372,7 +375,7 @@ class Session
               if (ec && ec != boost::asio::error::eof)
                 ex.throw_ex<std::runtime_error>(ec.message().c_str());
 
-              ntcp2::SessionRequest<ntcp2::Responder> srq(
+              SessionRequest<Responder> srq(
                   state_, info_->identity().hash(), aes_iv_);
 
               auto& kdf = srq.kdf();
@@ -412,7 +415,7 @@ class Session
 
   void HandleSessionCreated()
   {
-    if (std::is_same<SessionRole, ntcp2::SessionInitiator>::value)
+    if (std::is_same<SessionRole, SessionInitiator>::value)
       {
         const auto func = __func__;
         sock_.async_wait(
@@ -431,14 +434,14 @@ class Session
 
   void DoSessionCreated()
   {
-    namespace meta = ntcp2::meta::session_created;
+    namespace meta = tini2p::meta::ntcp2::session_created;
 
     const exception::Exception ex{"Session", __func__};
 
     if (std::is_same<SessionRole, ntcp2::SessionInitiator>::value)
       {
         std::lock_guard<std::mutex> lg(msg_mutex_);
-        scr_msg_ = std::make_unique<ntcp2::SessionCreatedMessage>();
+        scr_msg_ = std::make_unique<SessionCreatedMessage>();
         boost::asio::async_read(
             sock_,
             boost::asio::buffer(scr_msg_->data, meta::NoisePayloadSize),
@@ -457,7 +460,7 @@ class Session
               if (ec && ec != boost::asio::error::eof)
                 ex.throw_ex<std::runtime_error>(ec.message().c_str());
 
-              ntcp2::SessionCreated<ntcp2::Responder> scr(
+              SessionCreated<Responder> scr(
                   state_, *srq_msg_, dest_->identity().hash(), aes_iv_);
 
               scr.ProcessMessage(*scr_msg_);
@@ -493,9 +496,9 @@ class Session
     else
       {
         std::lock_guard<std::mutex> lg(msg_mutex_);
-        scr_msg_ = std::make_unique<ntcp2::SessionCreatedMessage>();
+        scr_msg_ = std::make_unique<SessionCreatedMessage>();
 
-        ntcp2::SessionCreated<ntcp2::Initiator> scr(
+        SessionCreated<Initiator> scr(
             state_, *srq_msg_, info_->identity().hash(), aes_iv_);
 
         scr.ProcessMessage(*scr_msg_);
@@ -524,7 +527,7 @@ class Session
 
   void HandleSessionConfirmed()
   {
-    if (std::is_same<SessionRole, ntcp2::SessionResponder>::value)
+    if (std::is_same<SessionRole, SessionResponder>::value)
       {
         const auto func = __func__;
         sock_.async_wait(
@@ -545,10 +548,10 @@ class Session
   {
     const exception::Exception ex{"Session", __func__};
 
-    if (std::is_same<SessionRole, ntcp2::SessionInitiator>::value)
+    if (std::is_same<SessionRole, SessionInitiator>::value)
       {
         std::lock_guard<std::mutex> lg(msg_mutex_);
-        ntcp2::SessionConfirmed<ntcp2::Initiator> sco(state_, *scr_msg_);
+        SessionConfirmed<Initiator> sco(state_, *scr_msg_);
 
         sco.ProcessMessage(*sco_msg_, srq_msg_->options);
 
@@ -576,8 +579,9 @@ class Session
     else
       {
         std::lock_guard<std::mutex> lg(msg_mutex_);
-        sco_msg_ = std::make_unique<ntcp2::SessionConfirmedMessage>(
-            meta::session_confirmed::PartOneSize + srq_msg_->options.m3p2_len);
+        sco_msg_ = std::make_unique<SessionConfirmedMessage>(
+            meta::ntcp2::session_confirmed::PartOneSize
+            + srq_msg_->options.m3p2_len);
 
         boost::asio::async_read(
             sock_,
@@ -597,7 +601,7 @@ class Session
               if (ec && ec != boost::asio::error::eof)
                 ex.throw_ex<std::runtime_error>(ec.message().c_str());
 
-              ntcp2::SessionConfirmed<ntcp2::Responder> sco(state_, *scr_msg_);
+              SessionConfirmed<Responder> sco(state_, *scr_msg_);
 
               sco.ProcessMessage(*sco_msg_, srq_msg_->options);
 
@@ -623,7 +627,7 @@ class Session
 
   void HandleDataPhase()
   {
-    if (std::is_same<SessionRole, ntcp2::SessionInitiator>::value)
+    if (std::is_same<SessionRole, SessionInitiator>::value)
       {
         const auto func = __func__;
         sock_.async_wait(
@@ -642,17 +646,19 @@ class Session
 
   void DoDataPhase()
   {
+    namespace meta = tini2p::meta::ntcp2::data_phase;
+
     const exception::Exception ex{"Session", __func__};
-    if (std::is_same<SessionRole, ntcp2::SessionInitiator>::value)
+    if (std::is_same<SessionRole, SessionInitiator>::value)
       {
         std::lock_guard<std::mutex> lg(msg_mutex_);
-        dp_msg_ = std::make_unique<ntcp2::DataPhaseMessage>();
-        dp_msg_->buffer.resize(meta::data_phase::MaxSize);
+        dp_msg_ = std::make_unique<DataPhaseMessage>();
+        dp_msg_->buffer.resize(meta::MaxSize);
 
         // read message length from the socket
         boost::asio::async_read(
             sock_,
-            boost::asio::buffer(dp_msg_->buffer, meta::data_phase::SizeSize),
+            boost::asio::buffer(dp_msg_->buffer, meta::SizeSize),
             [this, ex](
                 const boost::system::error_code& ec,
                 std::size_t bytes_transferred) {
@@ -660,7 +666,7 @@ class Session
                 ex.throw_ex<std::runtime_error>(ec.message().c_str());
 
               dp_xfer_ += bytes_transferred;
-              return meta::data_phase::SizeSize - dp_xfer_;
+              return meta::SizeSize - dp_xfer_;
             },
             [this, ex](
                 const boost::system::error_code& ec,
@@ -668,19 +674,19 @@ class Session
               if (ec && ec != boost::asio::error::eof)
                 ex.throw_ex<std::runtime_error>(ec.message().c_str());
 
-              dp_ = std::make_unique<ntcp2::DataPhase<SessionRole>>(state_);
+              dp_ = std::make_unique<DataPhase<SessionRole>>(state_);
 
               boost::endian::big_uint16_t obfs_len;
-              ntcp2::read_bytes(dp_msg_->buffer.data(), obfs_len);
+              tini2p::read_bytes(dp_msg_->buffer.data(), obfs_len);
 
-              dp_->kdf().ProcessLength(obfs_len, meta::data_phase::BobToAlice);
+              dp_->kdf().ProcessLength(obfs_len, meta::BobToAlice);
 
               if(obfs_len)
                 {
                   dp_xfer_ = 0;
                   // read remaing message bytes
-                  dp_msg_->buffer.resize(meta::data_phase::SizeSize + obfs_len);
-                  auto* data = &dp_msg_->buffer[meta::data_phase::SizeSize];
+                  dp_msg_->buffer.resize(meta::SizeSize + obfs_len);
+                  auto* data = &dp_msg_->buffer[meta::SizeSize];
                   boost::asio::async_read(
                       sock_,
                       boost::asio::buffer(data, obfs_len),
@@ -700,12 +706,12 @@ class Session
                           ex.throw_ex<std::runtime_error>(ec.message().c_str());
 
                         // write deobfuscated length back to message
-                        ntcp2::write_bytes(dp_msg_->buffer.data(), obfs_len);
+                        tini2p::write_bytes(dp_msg_->buffer.data(), obfs_len);
                         dp_->Read(*dp_msg_, false /*deobfs len*/);
 
                         for (const auto& block : dp_msg_->blocks)
-                          if (block->type() == meta::block::RouterInfoID)
-                            if (reinterpret_cast<ntcp2::RouterInfoBlock*>(
+                          if (block->type() == tini2p::meta::block::RouterInfoID)
+                            if (reinterpret_cast<tini2p::data::RouterInfoBlock*>(
                                     block.get())
                                     ->info()
                                     ->options()
@@ -726,11 +732,11 @@ class Session
     else
       {
         std::lock_guard<std::mutex> lg(msg_mutex_);
-        dp_ = std::make_unique<ntcp2::DataPhase<SessionRole>>(state_);
+        dp_ = std::make_unique<DataPhase<SessionRole>>(state_);
 
-        dp_msg_ = std::make_unique<ntcp2::DataPhaseMessage>();
-        dp_msg_->blocks.emplace_back(
-            std::unique_ptr<ntcp2::Block>(new ntcp2::RouterInfoBlock(info_)));
+        dp_msg_ = std::make_unique<DataPhaseMessage>();
+        dp_msg_->blocks.emplace_back(std::unique_ptr<tini2p::data::Block>(
+            new tini2p::data::RouterInfoBlock(info_)));
 
         dp_->Write(*dp_msg_);
 
@@ -762,5 +768,6 @@ class Session
   }
 };
 }  // namespace ntcp2
+}  // namespace tini2p
 
 #endif  // SRC_NTCP2_SESSION_SESSION_H_

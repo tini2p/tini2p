@@ -31,38 +31,43 @@
 
 #include "src/ntcp2/session_request/session_request.h"
 
-namespace meta = ntcp2::meta::session_request;
+namespace crypto = tini2p::crypto;
+namespace meta = tini2p::meta::ntcp2::session_request;
+
+using namespace tini2p::ntcp2;
+
+using tini2p::data::IdentHash;
 
 struct SessionRequestFixture
 {
   SessionRequestFixture()
   {
-    const ntcp2::exception::Exception ex{"SessionRequestFixture", __func__};
+    const exception::Exception ex{"SessionRequestFixture", __func__};
 
-    ntcp2::noise::init_handshake<ntcp2::Initiator>(&initiator_state, ex);
-    ntcp2::noise::init_handshake<ntcp2::Responder>(&responder_state, ex);
+    noise::init_handshake<Initiator>(&initiator_state, ex);
+    noise::init_handshake<Responder>(&responder_state, ex);
 
     // set dummy router hash (unrealistic)
-    ntcp2::router::IdentHash router_hash;
-    ntcp2::crypto::RandBytes(router_hash.data(), router_hash.size());
+    IdentHash router_hash;
+    crypto::RandBytes(router_hash.data(), router_hash.size());
 
     // set dummy static IV (unrealistic)
-    ntcp2::crypto::aes::IV iv;
-    ntcp2::crypto::RandBytes(iv.data(), iv.size());
+    crypto::aes::IV iv;
+    crypto::RandBytes(iv.data(), iv.size());
 
-    initiator = std::make_unique<ntcp2::SessionRequest<ntcp2::Initiator>>(
+    initiator = std::make_unique<SessionRequest<Initiator>>(
         initiator_state, router_hash, iv);
 
-    responder = std::make_unique<ntcp2::SessionRequest<ntcp2::Responder>>(
+    responder = std::make_unique<SessionRequest<Responder>>(
         responder_state, router_hash, iv);
   }
 
-  ntcp2::crypto::x25519::PubKey remote_key;
-  ntcp2::SessionRequestMessage message;
+  crypto::x25519::PubKey remote_key;
+  SessionRequestMessage message;
 
   NoiseHandshakeState *initiator_state, *responder_state;
-  std::unique_ptr<ntcp2::SessionRequest<ntcp2::Initiator>> initiator;
-  std::unique_ptr<ntcp2::SessionRequest<ntcp2::Responder>> responder;
+  std::unique_ptr<SessionRequest<Initiator>> initiator;
+  std::unique_ptr<SessionRequest<Responder>> responder;
 };
 
 TEST_CASE_METHOD(
@@ -120,7 +125,7 @@ TEST_CASE_METHOD(
     "SessionRequest responder fails to read without KDF",
     "[srq]")
 {
-  message.data.resize(ntcp2::meta::session_request::MinSize);
+  message.data.resize(meta::MinSize);
   REQUIRE_THROWS(responder->ProcessMessage(message));
 }
 
@@ -141,8 +146,10 @@ TEST_CASE_METHOD(
     "SessionRequestOptions rejects too large message 3 pt. 2 length",
     "[srq]")
 {
-  REQUIRE_THROWS(message.options.update(meta::MinMsg3Pt2Size - 1, {}));
-  REQUIRE_THROWS(message.options.update(meta::MaxMsg3Pt2Size + 1, {}));
+  REQUIRE_THROWS(
+      message.options.update(meta::MinMsg3Pt2Size - 1, {}));
+  REQUIRE_THROWS(
+      message.options.update(meta::MaxMsg3Pt2Size + 1, {}));
 }
 
 TEST_CASE_METHOD(
@@ -150,16 +157,14 @@ TEST_CASE_METHOD(
     "SessionRequestOptions rejects too large padding length",
     "[srq]")
 {
-  REQUIRE_THROWS(message.options.update({}, meta::MaxPaddingSize + 1));
+  REQUIRE_THROWS(
+      message.options.update({}, meta::MaxPaddingSize + 1));
 }
 
 TEST_CASE("SessionRequest rejects null handshake state", "[srq]")
 {
-  using Initiator = ntcp2::SessionRequest<ntcp2::Initiator>; 
-  using Responder = ntcp2::SessionRequest<ntcp2::Responder>; 
-  using ntcp2::router::IdentHash;
-  using ntcp2::crypto::aes::IV;
+  using crypto::aes::IV;
 
-  REQUIRE_THROWS(Initiator(nullptr, IdentHash(), IV()));
-  REQUIRE_THROWS(Responder(nullptr, IdentHash(), IV()));
+  REQUIRE_THROWS(SessionRequest<Initiator>(nullptr, IdentHash(), IV()));
+  REQUIRE_THROWS(SessionRequest<Responder>(nullptr, IdentHash(), IV()));
 }

@@ -32,27 +32,28 @@ project(tini2p-tests CXX)
 add_executable(tini2p-tests
   main.cc
 
+  bytes.cc
+
   crypto/aes.cc
   crypto/elgamal.cc
   crypto/ed25519.cc
   crypto/radix.cc
   crypto/siphash.cc
 
-  ntcp2/bytes.cc
+  data/blocks/date_time.cc
+  data/blocks/i2np.cc
+  data/blocks/options.cc
+  data/blocks/padding.cc
+  data/blocks/router_info.cc
+  data/blocks/termination.cc
+
+  data/router/address.cc
+  data/router/certificate.cc
+  data/router/identity.cc
+  data/router/info.cc
+  data/router/mapping.cc
+
   ntcp2/meta.cc
-
-  ntcp2/blocks/date_time.cc
-  ntcp2/blocks/i2np.cc
-  ntcp2/blocks/options.cc
-  ntcp2/blocks/padding.cc
-  ntcp2/blocks/router_info.cc
-  ntcp2/blocks/termination.cc
-
-  ntcp2/router/address.cc
-  ntcp2/router/certificate.cc
-  ntcp2/router/identity.cc
-  ntcp2/router/info.cc
-  ntcp2/router/mapping.cc
 
   ntcp2/session_request/kdf.cc
   ntcp2/session_request/session_request.cc

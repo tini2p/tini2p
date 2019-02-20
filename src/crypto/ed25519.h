@@ -35,7 +35,7 @@
 
 #include "src/crypto/key.h"
 
-namespace ntcp2
+namespace tini2p
 {
 namespace crypto
 {
@@ -189,6 +189,6 @@ class Signer : public Base
 };
 }  // namespace ed25519
 }  // namespace crypto
-}  // namespace ntcp2
+}  // namespace tini2p
 
 #endif  // SRC_CRYPTO_ED25519_H_

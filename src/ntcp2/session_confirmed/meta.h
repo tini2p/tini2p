@@ -36,25 +36,28 @@
 #include "src/ntcp2/session_created/meta.h"
 #include "src/ntcp2/session_created/options.h"
 
-namespace ntcp2
+namespace tini2p
 {
 namespace meta
+{
+namespace ntcp2
 {
 namespace session_confirmed
 {
 enum SessionConfirmedSizes : std::uint16_t
 {
-  MinPayloadSize = router::info::MinSize + ntcp2::crypto::hash::Poly1305Len,
+  MinPayloadSize = tini2p::meta::router::info::MinSize + tini2p::crypto::hash::Poly1305Len,
   MaxPayloadSize = 65471,  // see spec
   MinPaddingSize = 32,
   MaxPaddingSize = MaxPayloadSize - MinPayloadSize,
-  PartOneSize = ntcp2::crypto::x25519::PubKeyLen + ntcp2::crypto::hash::Poly1305Len,
+  PartOneSize = tini2p::crypto::x25519::PubKeyLen + tini2p::crypto::hash::Poly1305Len,
   MinSize = PartOneSize + MinPayloadSize,
   MaxSize = PartOneSize + MaxPayloadSize,
 };
 }  // namespace session_confirmed
-}  // namespace meta
 }  // namespace ntcp2
+}  // namespace meta
+}  // namespace tini2p
 
 #endif  // SRC_NTCP2_SESSION_CONFIRMED_META_H_
 

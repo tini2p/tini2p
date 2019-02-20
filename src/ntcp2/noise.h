@@ -44,6 +44,8 @@
 
 // Simple wrappers for NoiseC functions
 
+namespace tini2p
+{
 namespace ntcp2
 {
 namespace noise
@@ -67,7 +69,7 @@ inline void init_handshake(
     const exception::Exception& ex)
 {
   if (const int err = noise_handshakestate_new_by_name(
-          state, ntcp2::meta::name(), Role_t().id()))
+          state, tini2p::meta::ntcp2::name(), Role_t().id()))
     ex.throw_ex<std::runtime_error>("error initializing handshake state", err);
 }
 
@@ -294,5 +296,6 @@ inline void decrypt(
 }
 }  // namespace noise
 }  // namespace ntcp2
+}  // namespace tini2p
 
 #endif  // SRC_NTCP2_NOISE_H_

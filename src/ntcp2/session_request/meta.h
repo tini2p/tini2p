@@ -30,11 +30,13 @@
 #ifndef SRC_SESSION_REQUEST_META_H_
 #define SRC_SESSION_REQUEST_META_H_
 
-#include "src/ntcp2/router/meta.h"
+#include "src/data/router/meta.h"
 
-namespace ntcp2
+namespace tini2p
 {
 namespace meta
+{
+namespace ntcp2
 {
 namespace session_request
 {
@@ -55,19 +57,20 @@ enum MessageOffsets : std::uint8_t
 enum Sizes : std::uint16_t
 {
   OptionsSize = 16,
-  X = ntcp2::crypto::x25519::PubKeyLen,
-  CiphertextSize = OptionsSize + ntcp2::crypto::hash::Poly1305Len,
+  X = tini2p::crypto::x25519::PubKeyLen,
+  CiphertextSize = OptionsSize + tini2p::crypto::hash::Poly1305Len,
   NoisePayloadSize = X + CiphertextSize,
   MinSize = NoisePayloadSize,
   MaxSize = 65535,
-  MinMsg3Pt2Size = meta::router::info::MinSize
-                   + ntcp2::crypto::hash::Poly1305Len,  // see spec
+  MinMsg3Pt2Size = tini2p::meta::router::info::MinSize
+                   + tini2p::crypto::hash::Poly1305Len,  // see spec
   MaxMsg3Pt2Size = 65471,  // see spec
   MinPaddingSize = 32,
   MaxPaddingSize = MaxSize - NoisePayloadSize,
 };
 }  // namespace session_request
-}  // namespace meta
 }  // namespace ntcp2
+}  // namespace meta
+}  // namespace tini2p
 
 #endif  // SRC_SESSION_REQUEST_META_H_

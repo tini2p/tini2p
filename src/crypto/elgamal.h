@@ -37,7 +37,7 @@
 
 #include "src/crypto/key/elgamal.h"
 
-namespace ntcp2
+namespace tini2p
 {
 namespace meta
 {
@@ -52,14 +52,14 @@ enum Sizes : std::uint16_t
   PadSize = 1,
   PlaintextSize = 222,
   CiphertextSize = 514,
-  DefaultSize = NonceSize + ntcp2::crypto::hash::Sha256Len + PlaintextSize,
+  DefaultSize = NonceSize + tini2p::crypto::hash::Sha256Len + PlaintextSize,
 };
 
 enum Offsets : std::uint16_t
 {
   // encryption offsets
   HashOffset = NonceSize,
-  PlaintextOffset = HashOffset + ntcp2::crypto::hash::Sha256Len,
+  PlaintextOffset = HashOffset + tini2p::crypto::hash::Sha256Len,
 
   // for zero-padding
   BlockOnePadOffset = 0,
@@ -79,13 +79,13 @@ namespace elgamal
 /// @detail Wiping plaintext after use minimizes router footprint/traceability
 using Plaintext = CryptoPP::FixedSizeSecBlock<
     std::uint8_t,
-    ntcp2::meta::crypto::elgamal::PlaintextSize>;
+    tini2p::meta::crypto::elgamal::PlaintextSize>;
 
 /// @brief ElGamal ciphertext alias for correctness, usability and clarity
 /// @detail Wiping ciphertext after use minimizes router footprint/traceability
 using Ciphertext = CryptoPP::FixedSizeSecBlock<
     std::uint8_t,
-    ntcp2::meta::crypto::elgamal::CiphertextSize>;
+    tini2p::meta::crypto::elgamal::CiphertextSize>;
 
 /// @brief ElGamal encryption class with I2P modifications
 class Encryptor
@@ -106,12 +106,12 @@ class Encryptor
   /// @param zero_pad Flag for zero-padded ciphertext
   void Encrypt(Ciphertext& out, const Plaintext& in, const bool zero_pad)
   {
-    namespace meta = ntcp2::meta::crypto::elgamal;
+    namespace meta = tini2p::meta::crypto::elgamal;
 
-    using ntcp2::meta::crypto::constants::elgp;
-    using ntcp2::crypto::hash::Sha256Len;
+    using tini2p::meta::crypto::constants::elgp;
+    using tini2p::crypto::hash::Sha256Len;
 
-    const ntcp2::exception::Exception ex{"ElGamalEncryptor", __func__};
+    const tini2p::exception::Exception ex{"ElGamalEncryptor", __func__};
 
     // generate fresh ephemeral key material
     update_ephemeral();
@@ -119,11 +119,11 @@ class Encryptor
     std::array<std::uint8_t, meta::DefaultSize> memory;
 
     // Don't pad with uninitialized memory
-    ntcp2::crypto::RandBytes(memory.data(), memory.size());
+    tini2p::crypto::RandBytes(memory.data(), memory.size());
 
     // Ensure first byte is spec-defined, non-zero, random byte
     while (!memory.at(0))
-      ntcp2::crypto::RandBytes(memory.data(), meta::NonceSize);
+      tini2p::crypto::RandBytes(memory.data(), meta::NonceSize);
 
     std::copy(in.begin(), in.end(), &memory[meta::PlaintextOffset]);
 
@@ -171,8 +171,8 @@ class Encryptor
  private:
   void update_ephemeral()
   {  // rekey ephemeral material for every message
-    using ntcp2::meta::crypto::constants::elgg;
-    using ntcp2::meta::crypto::constants::elgp;
+    using tini2p::meta::crypto::constants::elgg;
+    using tini2p::meta::crypto::constants::elgp;
 
     y_ = CryptoPP::Integer(rng_, CryptoPP::Integer::One(), elgp - 1);
     c1_ = a_exp_b_mod_c(elgg, y_, elgp);
@@ -194,11 +194,11 @@ class Decryptor
   /// @param zero_pad Flag for zero-padded ciphertext
   void Decrypt(Plaintext& out, const Ciphertext& in, const bool zero_pad)
   {
-    namespace meta = ntcp2::meta::crypto::elgamal;
+    namespace meta = tini2p::meta::crypto::elgamal;
 
-    using ntcp2::meta::crypto::constants::elgg;
-    using ntcp2::meta::crypto::constants::elgp;
-    using ntcp2::crypto::hash::Sha256Len;
+    using tini2p::meta::crypto::constants::elgg;
+    using tini2p::meta::crypto::constants::elgp;
+    using tini2p::crypto::hash::Sha256Len;
 
     const exception::Exception ex{"ElGamalDecryptor", __func__};
 
@@ -245,6 +245,6 @@ class Decryptor
 };
 }  // namespace elgamal
 }  // namespace crypto
-}  // namespace ntcp2
+}  // namespace tini2p
 
 #endif  // SRC_CRYPTO_ELGAMAL_H_

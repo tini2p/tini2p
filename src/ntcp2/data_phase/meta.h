@@ -30,9 +30,11 @@
 #ifndef SRC_NTCP2_DATA_PHASE_META_H_
 #define SRC_NTCP2_DATA_PHASE_META_H_
 
-namespace ntcp2
+namespace tini2p
 {
 namespace meta
+{
+namespace ntcp2
 {
 namespace data_phase
 {
@@ -41,7 +43,7 @@ enum
   SizeSize = 2,
   AskStrSize = 4,
   SipStrSize = 7,
-  SipMasterInSize = ntcp2::crypto::hash::Sha256Len + SipStrSize,
+  SipMasterInSize = tini2p::crypto::hash::Sha256Len + SipStrSize,
   MinSize = SizeSize,
   MaxSize = 65535 + MinSize
 };
@@ -52,7 +54,8 @@ enum Direction
   BobToAlice
 };
 }  // namespace data_phase
-}  // namespace meta
 }  // namespace ntcp2
+}  // namespace meta
+}  // namespace tini2p
 
 #endif  // SRC_NTCP2_DATA_PHASE_META_H_

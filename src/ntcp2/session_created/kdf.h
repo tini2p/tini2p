@@ -33,50 +33,53 @@
 #include "src/ntcp2/session_request/session_request.h"
 #include "src/ntcp2/session_created/message.h"
 
+namespace tini2p
+{
 namespace ntcp2
 {
-  /// @class SessionCreatedConfirmedKDF
-  /// @brief Perform key derivation for SessionCreated and SessionConfirmed messages
-  /// @detail Key derivation is exactly the same for both messages
-  /// @notes Calls MixHash on the previous message's ciphertext and padding, see spec
-  class SessionCreatedConfirmedKDF
+/// @class SessionCreatedConfirmedKDF
+/// @brief Perform key derivation for SessionCreated and SessionConfirmed messages
+/// @detail Key derivation is exactly the same for both messages
+/// @notes Calls MixHash on the previous message's ciphertext and padding, see spec
+class SessionCreatedConfirmedKDF
+{
+  NoiseHandshakeState* state_;
+  const std::array<std::uint8_t, 0> zero_len_{};
+
+ public:
+  SessionCreatedConfirmedKDF(NoiseHandshakeState* state) : state_(state)
   {
-    NoiseHandshakeState* state_;
-    const std::array<std::uint8_t, 0> zero_len_{};
+    if (!state)
+      exception::Exception{"SessionCreatedConfirmedKDF", __func__}
+          .throw_ex<std::invalid_argument>("null handshake state.");
+  }
 
-   public:
-    SessionCreatedConfirmedKDF(NoiseHandshakeState* state) : state_(state)
-    {
-      if (!state)
-        exception::Exception{"SessionCreatedConfirmedKDF", __func__}
-            .throw_ex<std::invalid_argument>("null handshake state.");
-    }
+  /// @notes Don't free state, handled by owner
+  ~SessionCreatedConfirmedKDF() {}
 
-    /// @notes Don't free state, handled by owner
-    ~SessionCreatedConfirmedKDF() {}
+  /// @brief Derive keys for session created message
+  /// @param message Successfully processed session request message
+  template <
+      class Msg,
+      typename = std::enable_if_t<
+          std::is_same<Msg, ntcp2::SessionRequestMessage>::value
+          || std::is_same<Msg, ntcp2::SessionCreatedMessage>::value>>
+  void derive_keys(const Msg& message)
+  {
+    const exception::Exception ex{"SessionCreatedConfirmedKDF", __func__};
 
-    /// @brief Derive keys for session created message
-    /// @param message Successfully processed session request message
-    template <
-        class Msg,
-        typename = std::enable_if_t<
-            std::is_same<Msg, ntcp2::SessionRequestMessage>::value
-            || std::is_same<Msg, ntcp2::SessionCreatedMessage>::value>>
-    void derive_keys(const Msg& message)
-    {
-      const exception::Exception ex{"SessionCreatedConfirmedKDF", __func__};
+    if (message.ciphertext.empty() || message.padding.empty())
+      ex.throw_ex<std::length_error>(
+          ("null MixHash parameter(s): ciphertext - "
+           + std::to_string(message.ciphertext.size()) + " padding - "
+           + std::to_string(message.padding.size()))
+              .c_str());
 
-      if (message.ciphertext.empty() || message.padding.empty())
-        ex.throw_ex<std::length_error>(
-            ("null MixHash parameter(s): ciphertext - "
-             + std::to_string(message.ciphertext.size()) + " padding - "
-             + std::to_string(message.padding.size()))
-                .c_str());
-
-      noise::mix_hash(state_, message.ciphertext, ex);
-      noise::mix_hash(state_, message.padding, ex);
-    }
-  };
+    noise::mix_hash(state_, message.ciphertext, ex);
+    noise::mix_hash(state_, message.padding, ex);
+  }
+};
 }  // namespace ntcp2
+}  // namespace tini2p
 
 #endif  // SRC_NTCP2_SESSION_CREATED_KDF_H_

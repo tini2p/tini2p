@@ -32,29 +32,30 @@
 
 #include <boost/endian/arithmetic.hpp>
 
-#include "src/ntcp2/bytes.h"
-#include "src/ntcp2/time.h"
+#include "src/bytes.h"
+#include "src/time.h"
 
 #include "src/ntcp2/session_request/meta.h"
 #include "src/ntcp2/session_confirmed/meta.h"
 
+namespace tini2p
+{
 namespace ntcp2
 {
-namespace session_request
-{
+/// @struct SessionRequestOptions
 /// @brief Container for session request options
-struct Options
+struct SessionRequestOptions
 {
   std::uint8_t version;
   boost::endian::big_uint16_t pad_len, m3p2_len;
   boost::endian::big_uint32_t timestamp;
-  std::array<std::uint8_t, ntcp2::meta::session_request::OptionsSize> buf;
+  std::array<std::uint8_t, meta::ntcp2::session_request::OptionsSize> buffer;
 
-  Options()
-      : m3p2_len(meta::session_confirmed::MinPayloadSize),
+  SessionRequestOptions()
+      : m3p2_len(meta::ntcp2::session_confirmed::MinPayloadSize),
         pad_len(crypto::RandInRange(
-            meta::session_request::MinPaddingSize,
-            meta::session_request::MaxPaddingSize))
+            meta::ntcp2::session_request::MinPaddingSize,
+            meta::ntcp2::session_request::MaxPaddingSize))
   {
     update(m3p2_len, pad_len);
   }
@@ -63,7 +64,7 @@ struct Options
   /// @param m3p2_len Message 3 Pt. 2 message length, see spec
   /// @param pad_len Padding length for the session request
   /// @detail As initiator, must call before calling ProcessMessage
-  Options(
+  SessionRequestOptions(
       const boost::endian::big_uint16_t m3p2_size,
       const boost::endian::big_uint16_t pad_size)
   {
@@ -78,10 +79,10 @@ struct Options
       const boost::endian::big_uint16_t m3p2_size,
       const boost::endian::big_uint16_t pad_size)
   {
-    version = ntcp2::meta::Version;
+    version = tini2p::meta::ntcp2::Version;
     m3p2_len = m3p2_size;
     pad_len = pad_size;
-    timestamp = ntcp2::time::now_s();
+    timestamp = tini2p::time::now_s();
 
     check_params({"SessionRequest: Options", __func__});
 
@@ -91,39 +92,39 @@ struct Options
   /// @brief Write request options to buffer
   void serialize()
   {
-    namespace meta = ntcp2::meta::session_request;
+    namespace meta = tini2p::meta::ntcp2::session_request;
 
-    using ntcp2::exception::Exception;
+    using tini2p::exception::Exception;
 
     check_params(Exception{"SessionRequest: Options", __func__});
 
-    ntcp2::write_bytes(&buf[meta::VersionOffset], version);
-    ntcp2::write_bytes(&buf[meta::PadLengthOffset], pad_len);
-    ntcp2::write_bytes(&buf[meta::Msg3Pt2LengthOffset], m3p2_len);
-    ntcp2::write_bytes(&buf[meta::TimestampOffset], timestamp);
+    tini2p::write_bytes(&buffer[meta::VersionOffset], version);
+    tini2p::write_bytes(&buffer[meta::PadLengthOffset], pad_len);
+    tini2p::write_bytes(&buffer[meta::Msg3Pt2LengthOffset], m3p2_len);
+    tini2p::write_bytes(&buffer[meta::TimestampOffset], timestamp);
   }
 
   /// @brief Read request options from buffer
   void deserialize()
   {
-    namespace meta = ntcp2::meta::session_request;
+    namespace meta = tini2p::meta::ntcp2::session_request;
 
-    using ntcp2::exception::Exception;
+    using tini2p::exception::Exception;
 
-    ntcp2::read_bytes(&buf[meta::VersionOffset], version);
-    ntcp2::read_bytes(&buf[meta::PadLengthOffset], pad_len);
-    ntcp2::read_bytes(&buf[meta::Msg3Pt2LengthOffset], m3p2_len);
-    ntcp2::read_bytes(&buf[meta::TimestampOffset], timestamp);
+    tini2p::read_bytes(&buffer[meta::VersionOffset], version);
+    tini2p::read_bytes(&buffer[meta::PadLengthOffset], pad_len);
+    tini2p::read_bytes(&buffer[meta::Msg3Pt2LengthOffset], m3p2_len);
+    tini2p::read_bytes(&buffer[meta::TimestampOffset], timestamp);
 
     check_params(Exception{"SessionRequest: Options", __func__});
   }
 
  private:
-  void check_params(const ntcp2::exception::Exception& ex) const
+  void check_params(const exception::Exception& ex) const
   {
-    namespace meta = ntcp2::meta::session_request;
+    namespace meta = tini2p::meta::ntcp2::session_request;
 
-    if (version != ntcp2::meta::Version)
+    if (version != tini2p::meta::ntcp2::Version)
       ex.throw_ex<std::runtime_error>("invalid version.");
 
     if (pad_len > meta::MaxPaddingSize)
@@ -132,11 +133,11 @@ struct Options
     if (m3p2_len < meta::MinMsg3Pt2Size || m3p2_len > meta::MaxMsg3Pt2Size)
       ex.throw_ex<std::runtime_error>("invalid message 3 pt 2 size.");
 
-    if (!ntcp2::time::check_lag_s(timestamp))
+    if (!time::check_lag_s(timestamp))
       ex.throw_ex<std::runtime_error>("invalid timestamp.");
   }
 };
-}  // namespace session_request
 }  // namespace ntcp2
+}  // namespace tini2p
 
 #endif  // SRC_SESSION_REQUEST_OPTIONS_H_

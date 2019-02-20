@@ -39,7 +39,7 @@
 #include <cryptopp/base32.h>
 #include <cryptopp/base64.h>
 
-namespace ntcp2
+namespace tini2p
 {
 namespace crypto
 {
@@ -265,6 +265,6 @@ const std::array<const int, 256> Radix<T>::m_Base64Table{
      -1, -1, -1, -1, -1, -1, -1, -1, -1}};
 
 }  // namespace crypto
-}  // namespace ntcp2
+}  // namespace tini2p
 
 #endif  // SRC_CRYPTO_RADIX_H_

@@ -33,17 +33,18 @@
 #include "src/ntcp2/session/meta.h"
 #include "src/ntcp2/session/key.h"
 
+namespace tini2p
+{
 namespace ntcp2
 {
 /// @class SessionListener
 /// @brief Listen for incoming sessions on a given local endpoint
 class SessionListener
 {
-  ntcp2::router::Info* info_;
+  tini2p::data::Info* info_;
   boost::asio::io_context ctx_;
   boost::asio::ip::tcp::acceptor acc_;
-  std::vector<std::unique_ptr<ntcp2::Session<ntcp2::SessionResponder>>>
-      sessions_;
+  std::vector<std::unique_ptr<Session<SessionResponder>>> sessions_;
   std::map<SessionKey, std::uint16_t> session_count_, connect_count_;
   std::set<SessionKey> blacklist_;
   boost::asio::steady_timer timer_;
@@ -61,7 +62,7 @@ class SessionListener
       : info_(info),
         ctx_(),
         acc_(ctx_, host, true),
-        timer_(ctx_, std::chrono::milliseconds(meta::session::CleanTimeout))
+        timer_(ctx_, std::chrono::milliseconds(meta::ntcp2::session::CleanTimeout))
   {
     if (host.address().is_v6())
       assert(host.protocol() == acc_.local_endpoint().protocol());
@@ -166,7 +167,7 @@ class SessionListener
         const bool blacklisted =
             blacklist_.find(count_it->first) != blacklist_.end();
 
-        if (++count_it->second > meta::session::MaxConnections || blacklisted)
+        if (++count_it->second > meta::ntcp2::session::MaxConnections || blacklisted)
           {
             std::cerr << "SessionListener: "
                       << "blacklisted host with connection key: "
@@ -250,7 +251,7 @@ class SessionListener
 
       for (auto it = session_count_.begin(); it != session_count_.end(); ++it)
         {
-          if (it->second > meta::session::MaxSessions)
+          if (it->second > meta::ntcp2::session::MaxSessions)
             {
               blacklist_.emplace(std::move(it->first));
               session_count_.erase(it);
@@ -263,5 +264,6 @@ class SessionListener
   }
 };
 }  // namespace ntcp2
+}  // namespace tini2p
 
 #endif  // SRC_NTCP2_SESSION_LISTENER_H_

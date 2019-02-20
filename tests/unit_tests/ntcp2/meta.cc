@@ -33,7 +33,8 @@
 
 TEST_CASE("NTCP2 defines NOISE protocol name", "[name]")
 {
-  namespace meta = ntcp2::meta;
+  namespace meta = tini2p::meta::ntcp2;
+
   using Catch::Matchers::Equals;
 
   REQUIRE_THAT(

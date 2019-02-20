@@ -40,7 +40,7 @@
 
 #include "src/crypto/key/aes.h"
 
-namespace ntcp2
+namespace tini2p
 {
 namespace crypto
 {
@@ -54,7 +54,7 @@ enum
 using Block = CryptoPP::FixedSizeSecBlock<std::uint8_t, BlockLen>;
 
 /// @brief Template for AES CBC Cipher
-template <class Mode, class Key_t = ntcp2::crypto::aes::Key>
+template <class Mode, class Key_t = tini2p::crypto::aes::Key>
 class CBCCipher
 {
   Mode cipher_;
@@ -95,7 +95,7 @@ class CBCCipher
       const std::uint8_t* in,
       const std::size_t in_len)
   {
-    const ntcp2::exception::Exception ex{"CBCCipher", __func__};
+    const tini2p::exception::Exception ex{"CBCCipher", __func__};
 
     if (!out || !in)
       ex.throw_ex<std::invalid_argument>("null buffers.");
@@ -122,6 +122,6 @@ using CBCEncryption = CBCCipher<CryptoPP::CBC_Mode<CryptoPP::AES>::Encryption>;
 using CBCDecryption = CBCCipher<CryptoPP::CBC_Mode<CryptoPP::AES>::Decryption>;
 }  // namespace aes
 }  // namespace crypto
-}  // namespace ntcp2
+}  // namespace tini2p
 
 #endif  // SRC_CRYPTO_AES_H_

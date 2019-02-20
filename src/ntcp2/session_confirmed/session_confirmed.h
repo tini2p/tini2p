@@ -36,21 +36,23 @@
 
 #include "src/ntcp2/session_created/kdf.h"
 
-#include "src/ntcp2/blocks/options.h"
-#include "src/ntcp2/blocks/padding.h"
-#include "src/ntcp2/blocks/router_info.h"
+#include "src/data/blocks/options.h"
+#include "src/data/blocks/padding.h"
+#include "src/data/blocks/router_info.h"
 
 #include "src/ntcp2/session_confirmed/meta.h"
 
+namespace tini2p
+{
 namespace ntcp2
 {
 /// @brief Container for session created message
 struct SessionConfirmedMessage
 {
   std::vector<std::uint8_t> data, payload;
-  ntcp2::RouterInfoBlock ri_block;
-  ntcp2::OptionsBlock opt_block;
-  ntcp2::PaddingBlock pad_block;
+  tini2p::data::RouterInfoBlock ri_block;
+  tini2p::data::OptionsBlock opt_block;
+  tini2p::data::PaddingBlock pad_block;
 
   explicit SessionConfirmedMessage(const std::uint16_t size)
       : data(size), ri_block(), opt_block(), pad_block()
@@ -59,11 +61,11 @@ struct SessionConfirmedMessage
 
   /// @brief Create a SessionConfirmedMessage from a RouterInfo
   /// @param info RouterInfo pointer to use in the message
-  explicit SessionConfirmedMessage(router::Info* info)
+  explicit SessionConfirmedMessage(tini2p::data::Info* info)
       : ri_block(info),
         pad_block(crypto::RandInRange(
-            meta::session_confirmed::MinPaddingSize,
-            meta::session_confirmed::MaxPaddingSize))
+            meta::ntcp2::session_confirmed::MinPaddingSize,
+            meta::ntcp2::session_confirmed::MaxPaddingSize))
   {
     serialize();
   }
@@ -71,7 +73,7 @@ struct SessionConfirmedMessage
   /// @brief Create a SessionConfirmedMessage from a RouterInfo (w/ padding)
   /// @param info RouterInfo pointer to use in the message
   /// @param pad_len Length of padding to include
-  SessionConfirmedMessage(router::Info* info, const std::uint16_t pad_len)
+  SessionConfirmedMessage(tini2p::data::Info* info, const std::uint16_t pad_len)
       : ri_block(info), pad_block(pad_len)
   {
     serialize();
@@ -80,7 +82,7 @@ struct SessionConfirmedMessage
   /// @brief Get the total SessionConfirmed message size
   std::uint16_t size() const
   {
-    return meta::session_confirmed::PartOneSize + payload_size();
+    return meta::ntcp2::session_confirmed::PartOneSize + payload_size();
   }
 
   /// @brief Get the SessionConfirmed part two payload size
@@ -99,7 +101,7 @@ struct SessionConfirmedMessage
     data.resize(size());
     payload.resize(payload_size());
 
-    ntcp2::BytesWriter<decltype(payload)> writer(payload);
+    tini2p::BytesWriter<decltype(payload)> writer(payload);
 
     // serialize and write RouterInfo block to payload buffer
     ri_block.serialize();
@@ -121,27 +123,29 @@ struct SessionConfirmedMessage
   /// @brief Deserialize the message + payload from buffer
   void deserialize()
   {
+    namespace block_m = tini2p::meta::block;
+
     const exception::Exception ex{"SessionConfirmedMessage", __func__};
 
     std::uint8_t block_count(0);
     constexpr const std::uint8_t first(0), second(1), third(2), max(3);
 
-    ntcp2::BytesReader<decltype(payload)> reader(payload);
+    tini2p::BytesReader<decltype(payload)> reader(payload);
 
     // Read and deserialize a block from the buffer
-    const auto read_deserialize = [&reader, this](Block& block) {
+    const auto read_deserialize = [&reader, this](tini2p::data::Block& block) {
       boost::endian::big_uint16_t block_size;
-      ntcp2::read_bytes(
-          &payload[reader.count() + meta::block::SizeOffset], block_size);
+      tini2p::read_bytes(
+          &payload[reader.count() + block_m::SizeOffset], block_size);
 
       if (block_size)
         {
-          block.buffer().resize(meta::block::HeaderSize + block_size);
+          block.buffer().resize(block_m::HeaderSize + block_size);
           reader.read_data(block.buffer());
           block.deserialize();
         }
       else
-        reader.skip_bytes(meta::block::HeaderSize);
+        reader.skip_bytes(block_m::HeaderSize);
     };
 
     // Process RouterInfo, Options and Padding blocks
@@ -151,33 +155,33 @@ struct SessionConfirmedMessage
                                  read_deserialize,
                                  ex]() {
       std::uint8_t block_type;
-      ntcp2::read_bytes(&payload[reader.count()], block_type);
+      tini2p::read_bytes(&payload[reader.count()], block_type);
 
-      if (block_count == first && block_type != meta::block::RouterInfoID)
+      if (block_count == first && block_type != block_m::RouterInfoID)
         ex.throw_ex<std::logic_error>("RouterInfo must be the first block.");
 
-      if (block_count == second && block_type != meta::block::OptionsID
-          && block_type != meta::block::PaddingID)
+      if (block_count == second && block_type != block_m::OptionsID
+          && block_type != block_m::PaddingID)
         ex.throw_ex<std::logic_error>(
             "second block must be Options or Padding block.");
 
-      if (block_count == third && block_type != meta::block::PaddingID)
+      if (block_count == third && block_type != block_m::PaddingID)
         ex.throw_ex<std::logic_error>("last block must be Padding block.");
 
       if (block_count == max)
         ex.throw_ex<std::logic_error>("Padding must be the final block.");
 
-      if (block_type == meta::block::RouterInfoID)
+      if (block_type == block_m::RouterInfoID)
         {
           read_deserialize(ri_block);
           ++block_count;
         }
-      else if (block_type == meta::block::OptionsID)
+      else if (block_type == block_m::OptionsID)
         {
           read_deserialize(opt_block);
           ++block_count;
         }
-      else if (block_type == meta::block::PaddingID)
+      else if (block_type == block_m::PaddingID)
         {
           read_deserialize(pad_block);
           block_count = max;
@@ -187,7 +191,7 @@ struct SessionConfirmedMessage
     if (reader.gcount() <= crypto::hash::Poly1305Len) 
       ex.throw_ex<std::logic_error>("payload must contain a RouterInfo block.");
 
-    while (reader.gcount() >= meta::block::HeaderSize + crypto::hash::Poly1305Len)
+    while (reader.gcount() >= block_m::HeaderSize + crypto::hash::Poly1305Len)
       process_blocks();
 
     if (reader.gcount() > crypto::hash::Poly1305Len)
@@ -224,7 +228,7 @@ class SessionConfirmed
   /// @throw Runtime error if Noise library returns error
   void ProcessMessage(
       SessionConfirmedMessage& message,
-      const session_request::Options& options)
+      const SessionRequestOptions& options)
   {
     if (role_.id() == noise::InitiatorRole)
       Write(message, options);
@@ -235,7 +239,7 @@ class SessionConfirmed
  private:
   void Write(
       SessionConfirmedMessage& message,
-      const session_request::Options& options)
+      const SessionRequestOptions& options)
   {
     const exception::Exception ex{"SessionConfirmed", __func__};
 
@@ -259,9 +263,9 @@ class SessionConfirmed
 
   void Read(
       SessionConfirmedMessage& message,
-      const session_request::Options& options)
+      const SessionRequestOptions& options)
   {
-    namespace meta = ntcp2::meta::session_confirmed;
+    namespace meta = tini2p::meta::ntcp2::session_confirmed;
 
     const exception::Exception ex{"SessionConfirmed", __func__};
 
@@ -289,5 +293,6 @@ class SessionConfirmed
   }
 };
 }  // namespace ntcp2
+}  // namespace tini2p
 
 #endif  // SRC_NTCP2_SESSION_CONFIRMED_SESSION_CONFIRMED_H_

@@ -38,7 +38,7 @@
 
 #include "src/crypto/siphash.h"
 
-namespace hash = ntcp2::crypto::hash;
+namespace hash = tini2p::crypto::hash;
 
 struct SipHashFixture
 {

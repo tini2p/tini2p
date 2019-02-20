@@ -40,7 +40,7 @@
 
 #include "src/crypto/constants.h"
 
-namespace ntcp2
+namespace tini2p
 {
 namespace crypto
 {
@@ -63,8 +63,8 @@ struct Keypair
 
 inline Keypair create_keys()
 {
-  using ntcp2::meta::crypto::constants::elgp;
-  using ntcp2::meta::crypto::constants::elgg;
+  using tini2p::meta::crypto::constants::elgp;
+  using tini2p::meta::crypto::constants::elgg;
 
   CryptoPP::AutoSeededRandomPool rng;
 
@@ -84,6 +84,6 @@ inline Keypair create_keys()
 }
 }  // namespace elgamal
 }  // namespace crypto
-}  // namespace ntcp2
+}  // namespace tini2p
 
 #endif  // SRC_CRYPTO_KEY_ELGAMAL_H_

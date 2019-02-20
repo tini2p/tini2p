@@ -30,6 +30,9 @@ cmake_minimum_required(VERSION 3.10 FATAL_ERROR)
 project(tini2p-core CXX)
 
 add_library(tini2p-core
+  bytes.h
+  time.h
+
   # Crypto
   crypto/aes.h
   crypto/ed25519.h
@@ -40,31 +43,23 @@ add_library(tini2p-core
 
   exception/exception.h
 
-  ntcp2/bytes.h
   ntcp2/meta.h
-  ntcp2/messenger.h
   ntcp2/noise.h
   ntcp2/role.h
-  ntcp2/time.h
 
   # Blocks
-  ntcp2/blocks/block.h
-  ntcp2/blocks/date_time.h
-  ntcp2/blocks/meta.h
-  ntcp2/blocks/options.h
-  ntcp2/blocks/router_info.h
+  data/blocks/block.h
+  data/blocks/date_time.h
+  data/blocks/meta.h
+  data/blocks/options.h
+  data/blocks/router_info.h
 
   # Router
-  ntcp2/router/address.h
-  ntcp2/router/identity.h
-  ntcp2/router/info.h
-  ntcp2/router/mapping.h
-  ntcp2/router/meta.h
-  ntcp2/router/meta/address.h
-  ntcp2/router/meta/certificate.h
-  ntcp2/router/meta/identity.h
-  ntcp2/router/meta/info.h
-  ntcp2/router/meta/mapping.h
+  data/router/address.h
+  data/router/identity.h
+  data/router/info.h
+  data/router/mapping.h
+  data/router/meta.h
 
   # Session Request
   ntcp2/session_request/kdf.h
@@ -79,7 +74,6 @@ add_library(tini2p-core
   ntcp2/session_created/session_created.h
 
   # Session Confirmed
-  ntcp2/session_confirmed/kdf.h
   ntcp2/session_confirmed/meta.h
   ntcp2/session_confirmed/session_confirmed.h
 

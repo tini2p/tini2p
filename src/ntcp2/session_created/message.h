@@ -35,6 +35,8 @@
 
 /// INFO: Separated to avoid forward-declaration of SessionCreatedMessage for SessionCreatedConfirmedKDF
 
+namespace tini2p
+{
 namespace ntcp2
 {
 /// @struct SessionCreatedMessage
@@ -42,14 +44,14 @@ namespace ntcp2
 struct SessionCreatedMessage
 {
   std::vector<std::uint8_t> data, padding;
-  ntcp2::session_created::Options options;
+  SessionCreatedOptions options;
   CryptoPP::FixedSizeSecBlock<
       std::uint8_t,
-      ntcp2::meta::session_created::CiphertextSize>
+      meta::ntcp2::session_created::CiphertextSize>
       ciphertext;
 
   /// @brief Create a session created message w/ minimum length
-  SessionCreatedMessage() : data(meta::session_created::MinSize), options()
+  SessionCreatedMessage() : data(meta::ntcp2::session_created::MinSize), options()
   {
     if (options.pad_len)
       {
@@ -66,5 +68,6 @@ struct SessionCreatedMessage
   }
 };
 }  // namespace ntcp2
+}  // namespace tini2p
 
 #endif  // SRC_NTCP2_SESSION_CREATED_MESSAGE_H_
