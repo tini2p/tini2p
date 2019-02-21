@@ -51,7 +51,7 @@ enum
   BlockLen = 16,
 };
 
-using Block = CryptoPP::FixedSizeSecBlock<std::uint8_t, BlockLen>;
+using Block = FixedSecBytes<std::uint8_t, BlockLen>;
 
 /// @brief Template for AES CBC Cipher
 template <class Mode, class Key_t = tini2p::crypto::aes::Key>

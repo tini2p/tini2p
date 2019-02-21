@@ -47,7 +47,7 @@ namespace data
 {
 /// @brief Idenity hash alias for correctness, usability
 /// @detail Wiping identity hashes from memory removes traces of contacted routers
-using IdentHash = CryptoPP::FixedSizeSecBlock<std::uint8_t, crypto::hash::Sha256Len>;
+using IdentHash = crypto::FixedSecBytes<std::uint8_t, crypto::hash::Sha256Len>;
 
 /// @brief Convenience class for processing RouterIdentity crypto
 class Crypto
@@ -307,7 +307,7 @@ class Identity
   /// @brief Calculate a new Identity hash from the current buffer
   void update_hash()
   {
-    CryptoPP::SHA256().CalculateDigest(hash_.data(), buf_.data(), buf_.size());
+    crypto::hash::Sha256(hash_, buf_);
   }
 
   /// @brief Serialize the router identity to buffer

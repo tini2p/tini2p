@@ -27,46 +27,26 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef SRC_NTCP2_SESSION_CREATED_MESSAGE_H_
-#define SRC_NTCP2_SESSION_CREATED_MESSAGE_H_
+#ifndef SRC_CRYPTO_SEC_BYTES_H_
+#define SRC_CRYPTO_SEC_BYTES_H_
 
-#include "src/ntcp2/session_created/meta.h"
-#include "src/ntcp2/session_created/options.h"
-
-/// INFO: Separated to avoid forward-declaration of SessionCreatedMessage for SessionCreatedConfirmedKDF
+#include <cryptopp/secblock.h>
 
 namespace tini2p
 {
-namespace ntcp2
+namespace crypto
 {
-/// @struct SessionCreatedMessage
-/// @brief Container for session created message
-struct SessionCreatedMessage
-{
-  std::vector<std::uint8_t> data, padding;
-  SessionCreatedOptions options;
-  crypto::
-      FixedSecBytes<std::uint8_t, meta::ntcp2::session_created::CiphertextSize>
-          ciphertext;
+/// @alias SecBytes
+/// @brief Alias for secure-wiped memory buffer (variable size)
+/// @detail Used for refactor ease and readability
+using SecBytes = CryptoPP::SecByteBlock;
 
-  /// @brief Create a session created message w/ minimum length
-  SessionCreatedMessage() : data(meta::ntcp2::session_created::MinSize), options()
-  {
-    if (options.pad_len)
-      {
-        padding.resize(options.pad_len);
-        crypto::RandBytes(padding.data(), padding.size());
-      }
-  }
-
-  /// @brief Create a session created message w/ specified padding length
-  /// @para pad_len Length of padding to include
-  SessionCreatedMessage(const std::uint16_t pad_len) : options(pad_len) {
-    padding.resize(pad_len);
-    crypto::RandBytes(padding.data(), padding.size());
-  }
-};
-}  // namespace ntcp2
+/// @alias FixedSecBytes
+/// @brief Alias for secure-wiped memory buffer (fixed size)
+/// @detail Used for refactor ease and readability
+template <class T, std::size_t N>
+using FixedSecBytes = CryptoPP::FixedSizeSecBlock<T, N>;
+}  // namespace crypto
 }  // namespace tini2p
 
-#endif  // SRC_NTCP2_SESSION_CREATED_MESSAGE_H_
+#endif  // SRC_CRYPTO_SEC_BYTES_H_

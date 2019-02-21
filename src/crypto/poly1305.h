@@ -27,12 +27,23 @@
  * of this software, even if advised of the possibility of such damage.
 */
 
-#ifndef SRC_CRYPTO_HASH_H_
-#define SRC_CRYPTO_HASH_H_
+#ifndef SRC_CRYPTO_POLY1305_H_
+#define SRC_CRYPTO_POLY1305_H_
 
-#include <memory>
+namespace tini2p
+{
+namespace crypto
+{
+namespace hash
+{
+enum
+{
+  Poly1305Len = 16,
+};
 
-#include "src/crypto/poly1305.h"
-#include "src/crypto/sha.h"
+using Poly1305MAC = std::array<std::uint8_t, Poly1305Len>;
+}  // namespace hash
+}  // namespace crypto
+}  // namespace tini2p
 
-#endif  // SRC_CRYPTO_HASH_H_
+#endif  // SRC_CRYPTO_POLY1305_H_

@@ -202,7 +202,7 @@ inline void set_local_keypair(
 /// @throw If Noise library returns error
 inline void get_handshake_hash(
     const NoiseHandshakeState* state,
-    crypto::hash::Sha256& hash,
+    crypto::hash::Sha256Digest& hash,
     const exception::Exception& ex)
 {
   if (const int err = noise_handshakestate_get_handshake_hash(

@@ -245,10 +245,7 @@ class Session
                            ? sock_.local_endpoint().address().to_string()
                            : sock_.remote_endpoint().address().to_string();
 
-    CryptoPP::SHA256().CalculateDigest(
-        connect_key_.key.data(),
-        reinterpret_cast<const std::uint8_t*>(host.data()),
-        host.size());
+    crypto::hash::Sha256(connect_key_.key, host);
   }
 
   void Run()

@@ -32,9 +32,10 @@
 #define SRC_CRYPTO_KEY_ED25519_H_
 
 #include <cryptopp/naclite.h>
-#include <cryptopp/secblock.h>
 
 #include "src/exception/exception.h"
+
+#include "src/crypto/sec_bytes.h"
 
 namespace tini2p
 {
@@ -48,8 +49,8 @@ enum
   PvtKeyLen = 64,
 };
 
-using PubKey = CryptoPP::FixedSizeSecBlock<std::uint8_t, PubKeyLen>;
-using PvtKey = CryptoPP::FixedSizeSecBlock<std::uint8_t, PvtKeyLen>;
+using PubKey = FixedSecBytes<std::uint8_t, PubKeyLen>;
+using PvtKey = FixedSecBytes<std::uint8_t, PvtKeyLen>;
 
 struct Keypair
 {

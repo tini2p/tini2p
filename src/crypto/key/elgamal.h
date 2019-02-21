@@ -39,6 +39,7 @@
 #include "src/exception/exception.h"
 
 #include "src/crypto/constants.h"
+#include "src/crypto/sec_bytes.h"
 
 namespace tini2p
 {
@@ -52,8 +53,8 @@ enum
   PvtKeyLen = 256,
 };
 
-using PubKey = CryptoPP::FixedSizeSecBlock<std::uint8_t, PubKeyLen>;
-using PvtKey = CryptoPP::FixedSizeSecBlock<std::uint8_t, PvtKeyLen>;
+using PubKey = FixedSecBytes<std::uint8_t, PubKeyLen>;
+using PvtKey = FixedSecBytes<std::uint8_t, PvtKeyLen>;
 
 struct Keypair
 {

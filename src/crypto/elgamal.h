@@ -32,7 +32,6 @@
 #define SRC_CRYPTO_ELGAMAL_H_
 
 #include "src/crypto/constants.h"
-
 #include "src/crypto/hash.h"
 
 #include "src/crypto/key/elgamal.h"
@@ -77,15 +76,13 @@ namespace elgamal
 {
 /// @brief ElGamal plaintext alias for correctness, usability and clarity
 /// @detail Wiping plaintext after use minimizes router footprint/traceability
-using Plaintext = CryptoPP::FixedSizeSecBlock<
-    std::uint8_t,
-    tini2p::meta::crypto::elgamal::PlaintextSize>;
+using Plaintext =
+    FixedSecBytes<std::uint8_t, meta::crypto::elgamal::PlaintextSize>;
 
 /// @brief ElGamal ciphertext alias for correctness, usability and clarity
 /// @detail Wiping ciphertext after use minimizes router footprint/traceability
-using Ciphertext = CryptoPP::FixedSizeSecBlock<
-    std::uint8_t,
-    tini2p::meta::crypto::elgamal::CiphertextSize>;
+using Ciphertext =
+    FixedSecBytes<std::uint8_t, meta::crypto::elgamal::CiphertextSize>;
 
 /// @brief ElGamal encryption class with I2P modifications
 class Encryptor

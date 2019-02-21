@@ -30,6 +30,8 @@
 #ifndef SRC_NTCP2_DATA_PHASE_KDF_H_
 #define SRC_NTCP2_DATA_PHASE_KDF_H_
 
+#include <boost/endian/arithmetic.hpp>
+
 #include <noise/protocol/handshakestate.h>
 
 #include "src/crypto/key.h"
@@ -52,7 +54,7 @@ class DataPhaseKDF
   crypto::hash::SipHashKeyPart key_pt1_ab_, key_pt2_ab_, key_pt1_ba_,
       key_pt2_ba_;
   crypto::hash::SipHashIV iv_ab_, iv_ba_;
-  crypto::hash::Sha256 h_;
+  crypto::hash::Sha256Digest h_;
   NoiseHandshakeState* state_;
   NoiseCipherState *alice_to_bob_, *bob_to_alice_;
 
@@ -61,7 +63,7 @@ class DataPhaseKDF
   /// @param state Pointer to valid Noise handshake state
   /// @param role Noise role during first DataPhase message
   /// @throw Invalid argument on null handshake state
-  DataPhaseKDF(NoiseHandshakeState* state, const ntcp2::Role& role)
+  DataPhaseKDF(NoiseHandshakeState* state, const Role& role)
       : state_(state),
         key_pt1_ab_{},
         key_pt2_ab_{},
@@ -116,6 +118,8 @@ class DataPhaseKDF
   {
     namespace meta = tini2p::meta::ntcp2::data_phase;
 
+    using tini2p::crypto::hash::HmacSha256;
+
     std::array<std::uint8_t, meta::SipMasterInSize> sip_master_in;
 
     const std::array<std::uint8_t, meta::AskStrSize> ask_str{
@@ -129,19 +133,19 @@ class DataPhaseKDF
     sip_in_writer.write_data(h_);
     sip_in_writer.write_data(sip_str);
 
-    std::array<std::uint8_t, crypto::hash::Sha256Len> ask_master, sip_master;
+    crypto::hash::Sha256Digest ask_master, sip_master;
     const std::array<std::uint8_t, 1> byte_one{0x01};
 
     // Derive SipHash temp key from handshake temp key
-    crypto::hash::HmacSha256(temp_key, ask_str, ask_master);
-    crypto::hash::HmacSha256(ask_master, sip_master_in, temp_key);
-    crypto::hash::HmacSha256(temp_key, byte_one, sip_master);
-    crypto::hash::HmacSha256(
-        sip_master, std::array<std::uint8_t, 0>{}, temp_key);
+    HmacSha256(temp_key, ask_str, ask_master);
+    HmacSha256(ask_master, sip_master_in, temp_key);
+    HmacSha256(temp_key, byte_one, sip_master);
+    HmacSha256(sip_master, std::array<std::uint8_t, 0>{}, temp_key);
 
-    std::array<std::uint8_t, crypto::hash::Sha256Len> sip_keys_ab, sip_keys_ba;
+    crypto::hash::Sha256Digest sip_keys_ab, sip_keys_ba;
 
-    crypto::hash::HmacSha256(temp_key, byte_one, sip_keys_ab);
+    // Derive SipHash keys for Alice to Bob
+    HmacSha256(temp_key, byte_one, sip_keys_ab);
     tini2p::BytesReader<decltype(sip_keys_ab)> ab_reader(sip_keys_ab);
     ab_reader.read_data(key_pt1_ab_);
     ab_reader.read_data(key_pt2_ab_);
@@ -151,7 +155,8 @@ class DataPhaseKDF
     std::copy(sip_keys_ab.begin(), sip_keys_ab.end(), sip_keys_ba_in.begin());
     sip_keys_ba_in.back() = 0x02;
 
-    crypto::hash::HmacSha256(temp_key, sip_keys_ba_in, sip_keys_ba);
+    // Derive SipHash keys for Bob to Alice
+    HmacSha256(temp_key, sip_keys_ba_in, sip_keys_ba);
     tini2p::BytesReader<decltype(sip_keys_ba)> ba_reader(sip_keys_ba);
     ba_reader.read_data(key_pt1_ba_);
     ba_reader.read_data(key_pt2_ba_);

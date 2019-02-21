@@ -93,12 +93,12 @@ class Verifier : public Base
       const std::uint8_t* sig) const
   {
     // Combine message with given signature
-    CryptoPP::SecByteBlock sm(ed25519::SignatureLen + mlen);
+    SecBytes sm(ed25519::SignatureLen + mlen);
     std::copy(sig, sig + ed25519::SignatureLen, sm.begin());
     std::copy(m, m + mlen, sm.begin() + ed25519::SignatureLen);
 
     // Verify
-    CryptoPP::SecByteBlock rm(mlen + ed25519::SignatureLen);
+    SecBytes rm(mlen + ed25519::SignatureLen);
     CryptoPP::word64 rmlen;
 
     int const ret(CryptoPP::NaCl::crypto_sign_open(

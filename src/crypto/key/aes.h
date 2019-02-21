@@ -30,9 +30,8 @@
 #ifndef SRC_CRYPTO_KEY_AES_H_
 #define SRC_CRYPTO_KEY_AES_H_
 
-#include <cryptopp/secblock.h>
-
 #include "src/crypto/rand.h"
+#include "src/crypto/sec_bytes.h"
 
 namespace tini2p
 {
@@ -46,8 +45,8 @@ enum
   IVLen = 16,
 };
 
-using Key = CryptoPP::FixedSizeSecBlock<std::uint8_t, KeyLen>;
-using IV = CryptoPP::FixedSizeSecBlock<std::uint8_t, IVLen>;
+using Key = FixedSecBytes<std::uint8_t, KeyLen>;
+using IV = FixedSecBytes<std::uint8_t, IVLen>;
 
 struct KeyIV
 {
