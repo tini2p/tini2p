@@ -30,22 +30,260 @@
 #ifndef SRC_CRYPTO_SEC_BYTES_H_
 #define SRC_CRYPTO_SEC_BYTES_H_
 
-#include <cryptopp/secblock.h>
+#include <initializer_list>
+
+#include <sodium.h>
+
+#include "src/exception/exception.h"
 
 namespace tini2p
 {
 namespace crypto
 {
-/// @alias SecBytes
-/// @brief Alias for secure-wiped memory buffer (variable size)
-/// @detail Used for refactor ease and readability
-using SecBytes = CryptoPP::SecByteBlock;
+template <class Buffer>
+class SecBase
+{
+ protected:
+  Buffer buf_;
+
+  using buffer_t = decltype(buf_);
+
+  SecBase() : buf_() {}
+
+  explicit SecBase(const typename buffer_t::size_type size) : buf_(size) {}
+
+  explicit SecBase(buffer_t buf) : buf_(std::forward<buffer_t>(buf)) {}
+
+  SecBase(
+      const typename buffer_t::size_type size,
+      const typename buffer_t::value_type& val)
+      : buf_(size, val)
+  {
+  }
+
+  SecBase(
+      typename buffer_t::const_iterator begin,
+      typename buffer_t::const_iterator end)
+      : buf_(begin, end)
+  {
+  }
+
+  explicit SecBase(
+      std::initializer_list<typename buffer_t::value_type> init_list)
+      : buf_(init_list)
+  {
+  }
+
+ public:
+  using pointer = typename buffer_t::pointer;  //< Non-const pointer trait alias
+  using const_pointer = typename buffer_t::const_pointer;  //< Const pointer trait alias
+  using iterator = typename buffer_t::iterator;  //< Non-const iterator trait alias
+  using const_iterator = typename buffer_t::const_iterator;  //< Const iterator trait alias
+  using size_type = typename buffer_t::size_type;  //< Size type trait alias
+
+  ~SecBase() { sodium_memzero(buf_.data(), buf_.size()); }
+
+  /// @brief Get a non-const pointer to the beginning of the buffer
+  pointer data() noexcept
+  {
+    return buf_.data();
+  }
+
+  /// @brief Get a const pointer to the beginning of the buffer
+  const_pointer data() const noexcept
+  {
+    return buf_.data();
+  }
+
+  /// @brief Get a non-const iterator to the beginning of the buffer
+  iterator begin() noexcept
+  {
+    return buf_.begin();
+  }
+
+  /// @brief Get a non-const iterator to the end of the buffer
+  iterator end() noexcept
+  {
+    return buf_.end();
+  }
+
+  /// @brief Get a non-const iterator to the beginning of the buffer
+  const_iterator begin() const noexcept
+  {
+    return buf_.begin();
+  }
+
+  /// @brief Get a non-const iterator to the end of the buffer
+  const_iterator end() const noexcept
+  {
+    return buf_.end();
+  }
+
+  /// @brief Get a non-const iterator to the beginning of the buffer
+  const_iterator cbegin() const noexcept
+  {
+    return buf_.begin();
+  }
+
+  /// @brief Get a non-const iterator to the end of the buffer
+  const_iterator cend() const noexcept
+  {
+    return buf_.end();
+  }
+
+  /// @brief Get a non-const reference to the value at given buffer index
+  /// @param idx Retrieve value at this index in the buffer
+  decltype(auto) operator[](size_type idx)
+  {
+    if (idx > buf_.size())
+      exception::Exception{"SecBytes", __func__}
+          .throw_ex<std::invalid_argument>("out-of-bounds access.");
+
+    return buf_[idx];
+  }
+
+  /// @brief Get a const reference to the value at given buffer index
+  /// @param idx Retrieve value at this index in the buffer
+  decltype(auto) operator[](size_type idx) const
+  {
+    if (idx > buf_.size())
+      exception::Exception{"SecBytes", __func__}
+          .throw_ex<std::invalid_argument>("out-of-bounds access.");
+
+    return buf_[idx];
+  }
+
+  /// @brief Get a the buffer size
+  size_type size() const noexcept
+  {
+    return buf_.size();
+  }
+
+  /// @brief Get empty status of the buffer
+  bool empty() const noexcept { return buf_.empty(); }
+
+  /// @brief Enable static_cast to the underlying buffer type
+  explicit operator const buffer_t&() const
+  {
+    return buf_;
+  }
+};
+
+/// @class SecBytes
+/// @brief Secure-wiped memory buffer (variable size)
+class SecBytes : public SecBase<std::vector<std::uint8_t>>
+{
+ public:
+  using buffer_t = std::vector<std::uint8_t>;
+
+  SecBytes() : SecBase<buffer_t>() {}
+
+  /// @brief Create a secure buffer with a given size
+  explicit SecBytes(const std::size_t size) : SecBase<buffer_t>(size) {}
+
+  /// @brief Create a secure buffer from a buffer
+  /// @param buf Input buffer
+  explicit SecBytes(buffer_t buf)
+      : SecBase<buffer_t>(std::forward<buffer_t>(buf))
+  {
+  }
+
+  /// @brief Create a secure buffer from a buffer pointer and size
+  /// @param data Pointer to the beginning of the input buffer
+  /// @param size Size of the input buffer
+  SecBytes(buffer_t::const_pointer data, const std::size_t size)
+      : SecBase<buffer_t>(size)
+  {
+    std::copy_n(data, size, SecBase<buffer_t>::begin());
+  }
+
+  /// @brief Create a secure buffer filled with size number of a given value 
+  /// @param size Number of values to copy to secure buffer
+  /// @param val Value to fill the secured buffer
+  SecBytes(const std::size_t size, const buffer_t::value_type& val)
+      : SecBase<buffer_t>(size, val)
+  {
+  }
+
+  /// @brief Create a secure buffer from an iterator range
+  /// @param begin Beginning iterator for the input buffer
+  /// @param end Ending iterator for the input buffer
+  SecBytes(buffer_t::const_iterator begin, buffer_t::const_iterator end)
+      : SecBase<buffer_t>(begin, end)
+  {
+  }
+
+  /// @brief Create a secure buffer from an initializer list
+  /// @param init_list Initializer list for the secure buffer
+  explicit SecBytes(std::initializer_list<buffer_t::value_type> init_list)
+      : SecBase<buffer_t>(init_list)
+  {
+  }
+
+  /// @brief Resize the underlying buffer
+  void resize(const std::size_t size) { SecBase<buffer_t>::buf_.resize(size); }
+};
 
 /// @alias FixedSecBytes
 /// @brief Alias for secure-wiped memory buffer (fixed size)
 /// @detail Used for refactor ease and readability
-template <class T, std::size_t N>
-using FixedSecBytes = CryptoPP::FixedSizeSecBlock<T, N>;
+template <class T = std::uint8_t, std::size_t N>
+class FixedSecBytes : public SecBase<std::array<T, N>>
+{
+ public:
+  using buffer_t = std::array<T, N>;
+
+  FixedSecBytes() : SecBase<buffer_t>{} {}
+
+  /// @brief Create a secure buffer from a buffer
+  /// @param buf Input buffer
+  explicit FixedSecBytes(buffer_t buf)
+      : SecBase<buffer_t>(std::forward<buffer_t>(buf))
+  {
+  }
+
+  /// @brief Create a secure buffer from a buffer pointer and size
+  /// @param data Pointer to the beginning of the input buffer
+  /// @param size Size of the input buffer
+  FixedSecBytes(
+      typename buffer_t::const_iterator data,
+      typename buffer_t::size_type size)
+      : SecBase<buffer_t>()
+  {
+    if (size > N)
+      exception::Exception{"FixedSecBytes"}.throw_ex<std::invalid_argument>(
+          "invalid buffer size.");
+
+    std::copy_n(data, size, SecBase<buffer_t>::buf_.begin());
+  }
+
+  /// @brief Create a secure buffer from an iterator range
+  /// @param begin Beginning iterator for the input buffer
+  /// @param end Ending iterator for the input buffer
+  FixedSecBytes(
+      typename buffer_t::const_iterator begin,
+      typename buffer_t::const_iterator end)
+      : SecBase<buffer_t>()
+  {
+    if (end - begin > N || end < begin)
+      exception::Exception{"FixedSecBytes"}.throw_ex<std::invalid_argument>(
+          "invalid iterator range.");
+
+    std::copy(begin, end, SecBase<buffer_t>::buf_.begin());
+  }
+
+  /// @brief Create a secure buffer from an initializer list
+  /// @param init_list Initializer list for the secure buffer
+  explicit FixedSecBytes(std::initializer_list<T> init_list)
+      : SecBase<buffer_t>()
+  {
+    if (init_list.size() > N)
+      exception::Exception{"FixedSecBytes"}.throw_ex<std::invalid_argument>(
+          "invalid initializer list size.");
+
+    std::copy(inint_list.begin(), init_list.end(), SecBase<buffer_t>::begin());
+  }
+};
 }  // namespace crypto
 }  // namespace tini2p
 
