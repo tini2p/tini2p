@@ -1,20 +1,20 @@
 /* copyright (c) 2019, tini2p
  * all rights reserved.
- * 
+ *
  * redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
- * 
+ *
  * * redistributions of source code must retain the above copyright notice, this
  *   list of conditions and the following disclaimer.
- * 
+ *
  * * redistributions in binary form must reproduce the above copyright notice,
  *   this list of conditions and the following disclaimer in the documentation
  *   and/or other materials provided with the distribution.
- * 
+ *
  * * neither the name of the copyright holder nor the names of its
  *   contributors may be used to endorse or promote products derived from
  *   this software without specific prior written permission.
- * 
+ *
  * this software is provided by the copyright holders and contributors "as is"
  * and any express or implied warranties, including, but not limited to, the
  * implied warranties of merchantability and fitness for a particular purpose are
@@ -30,54 +30,82 @@
 #ifndef SRC_CRYPTO_SHA_H_
 #define SRC_CRYPTO_SHA_H_
 
-#include <cryptopp/hmac.h>
-#include <cryptopp/sha.h>
+#include <sodium.h>
 
 #include "src/exception/exception.h"
+
+#include "src/crypto/sec_bytes.h"
 
 namespace tini2p
 {
 namespace crypto
 {
-namespace hash
+struct Sha256
 {
-enum
-{
-  Sha256Len = 32,
+  enum : std::uint8_t
+  {
+    DigestLen = 32,
+  };
+
+  using digest_t = FixedSecBytes<DigestLen>;  //< digest trait alias
+
+  /// @brief Calculate a SHA256 digest of a given input buffer
+  /// @param digest Non-const reference for the SHA256 digest result
+  /// @param input Const reference to the input buffer
+  template <class Input>
+  inline static void Hash(digest_t& digest, const Input& input)
+  {
+    crypto_hash_sha256(
+        digest.data(),
+        reinterpret_cast<const std::uint8_t*>(input.data()),
+        input.size());
+  }
 };
 
-/// @alias Sha256Digest
-/// @brief Alias for correctness, usability and readability
-using Sha256Digest = std::array<std::uint8_t, Sha256Len>;
-
-/// @brief Calculate a SHA256 digest of a given input buffer
-/// @param digest Non-const reference for the SHA256 digest result
-/// @param input Const reference to the input buffer
-template <class Digest, class Input>
-inline void Sha256(Digest& digest, const Input& input)
+struct HmacSha256
 {
-  CryptoPP::SHA256().CalculateDigest(
-      digest.data(),
-      reinterpret_cast<const std::uint8_t*>(input.data()),
-      input.size());
-}
+  enum
+  {
+    DigestLen = Sha256::DigestLen,
+    SaltLen = Sha256::DigestLen,
+    KeyLen = Sha256::DigestLen,
+    MinKeyMaterialLen = Sha256::DigestLen,
+    MaxKeyMaterialLen = Sha256::DigestLen * 16,  // 512 bytes, need more?
+    DefaultContextLen = 8,
+    MaxContextLen = 16,  //< CString[16], based on libsodium
+  };
 
-/// @brief Calculate a HMAC-SHA256 digest of a given input buffer
-/// @param key HMAC key for calculating the digest
-/// @param input Const reference to the input buffer
-/// @param digest Non-const reference for the HMAC-SHA256 digest result
-template <class HmacKey, class Input, class Digest>
-inline void HmacSha256(const HmacKey& key, const Input& input, Digest& digest)
-{
-  if (digest.size() != Sha256Len)
-    exception::Exception{"Crypto: Hash", __func__}.throw_ex<std::length_error>(
-        "invalid digest size.");
+  using salt_t = FixedSecBytes<SaltLen>;
+  using digest_t = FixedSecBytes<DigestLen>;
+  using key_material_t = SecBytes;
+  using key_t = FixedSecBytes<KeyLen>;
 
-  CryptoPP::HMAC<CryptoPP::SHA256> hmac(key.data(), key.size());
-  hmac.Update(input.data(), input.size());
-  hmac.Final(digest.data());
-}
-}  // namespace hash
+  /// @brief Calculate the HMAC digest of input key material
+  /// @param out Output buffer
+  /// @param input Input key material
+  /// @param key HMAC pseudo-random key
+  static void Hash(
+      digest_t& out,
+      key_material_t::const_pointer in_ptr,
+      const key_material_t::size_type in_size,
+      const key_t& key)
+  {
+    crypto_auth_hmacsha256(out.data(), in_ptr, in_size, key.data());
+  }
+
+  /// @brief Calculate the HMAC digest of input key material
+  /// @param out Output buffer
+  /// @param in Input key material
+  /// @param key HMAC pseudo-random key
+  template <class KeyMaterial>
+  inline static void Hash(
+      digest_t& out,
+      const KeyMaterial& in,
+      const key_t& key = {})
+  {
+    crypto_auth_hmacsha256(out.data(), in.data(), in.size(), key.data());
+  }
+};
 }  // namespace crypto
 }  // namespace tini2p
 

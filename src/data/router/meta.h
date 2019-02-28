@@ -30,7 +30,9 @@
 #ifndef SRC_NTCP2_ROUTER_META_H_
 #define SRC_NTCP2_ROUTER_META_H_
 
-#include "src/crypto/meta.h"
+#include "src/crypto/aes.h"
+#include "src/crypto/ecies.h"
+#include "src/crypto/eddsa.h"
 
 #include "src/data/router/meta/address.h"
 #include "src/data/router/meta/certificate.h"

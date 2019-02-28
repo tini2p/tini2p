@@ -30,7 +30,7 @@
 #ifndef SRC_NTCP2_SESSION_CREATED_KDF_H_
 #define SRC_NTCP2_SESSION_CREATED_KDF_H_
 
-#include "src/ntcp2/session_request/session_request.h"
+#include "src/ntcp2/session_request/message.h"
 #include "src/ntcp2/session_created/message.h"
 
 namespace tini2p
@@ -41,13 +41,15 @@ namespace ntcp2
 /// @brief Perform key derivation for SessionCreated and SessionConfirmed messages
 /// @detail Key derivation is exactly the same for both messages
 /// @notes Calls MixHash on the previous message's ciphertext and padding, see spec
-class SessionCreatedConfirmedKDF
+class SessionCreatedKDF
 {
-  NoiseHandshakeState* state_;
-  const std::array<std::uint8_t, 0> zero_len_{};
+  noise::HandshakeState* state_;
 
  public:
-  SessionCreatedConfirmedKDF(NoiseHandshakeState* state) : state_(state)
+  using request_msg_t = SessionRequestMessage;  //< SessionRequest message trait
+  using created_msg_t = SessionCreatedMessage;  //< SessionCreated message trait
+
+  SessionCreatedKDF(noise::HandshakeState* state) : state_(state)
   {
     if (!state)
       exception::Exception{"SessionCreatedConfirmedKDF", __func__}
@@ -55,16 +57,16 @@ class SessionCreatedConfirmedKDF
   }
 
   /// @notes Don't free state, handled by owner
-  ~SessionCreatedConfirmedKDF() {}
+  ~SessionCreatedKDF() {}
 
   /// @brief Derive keys for session created message
   /// @param message Successfully processed session request message
   template <
       class Msg,
       typename = std::enable_if_t<
-          std::is_same<Msg, ntcp2::SessionRequestMessage>::value
-          || std::is_same<Msg, ntcp2::SessionCreatedMessage>::value>>
-  void derive_keys(const Msg& message)
+          std::is_same<Msg, request_msg_t>::value
+          || std::is_same<Msg, created_msg_t>::value>>
+  void Derive(const Msg& message)
   {
     const exception::Exception ex{"SessionCreatedConfirmedKDF", __func__};
 

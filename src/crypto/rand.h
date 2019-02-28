@@ -30,7 +30,7 @@
 #ifndef SRC_CRYPTO_RAND_H_
 #define SRC_CRYPTO_RAND_H_
 
-#include <cryptopp/osrng.h>
+#include <sodium.h>
 
 namespace tini2p
 {
@@ -40,29 +40,26 @@ namespace crypto
 /// @param Blocking Boolean flag to use blocking RNG
 /// @param data Buffer to fill with random data
 /// @param size Size of data buffer
-template <bool Blocking = false>
 inline void RandBytes(uint8_t* data, const std::size_t size)
 {
-  CryptoPP::OS_GenerateRandomBlock(Blocking, data, size);
+  randombytes_buf(data, size);
 }
 
 /// @brief Generate a random block of data with OS RNG
 /// @param Blocking Boolean flag to use blocking RNG
 /// @param buf Buffer to fill with random data
-template <bool Blocking = false, class Buffer>
+template <class Buffer>
 inline void RandBytes(Buffer& buf)
 {
-  CryptoPP::OS_GenerateRandomBlock(Blocking, buf.data(), buf.size());
+  randombytes_buf(buf.data(), buf.size());
 }
 
-template <class Int>
-inline Int RandInRange(const Int min, const Int max)
+inline decltype(auto) RandInRange(const std::uint32_t min, const std::uint32_t max)
 {
-  Int rand;
+  std::uint32_t rand(0);
   do
     {
-      CryptoPP::OS_GenerateRandomBlock(
-          false, reinterpret_cast<std::uint8_t*>(&rand), sizeof(rand));
+      rand = randombytes_uniform(max);
     }
   while (rand < min || rand > max);
 

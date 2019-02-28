@@ -35,10 +35,12 @@ add_executable(tini2p-tests
   bytes.cc
 
   crypto/aes.cc
-  crypto/elgamal.cc
-  crypto/ed25519.cc
+  crypto/chacha_poly1305.cc
+  crypto/ecies/x25519.cc
+  crypto/eddsa/eddsa_sha512.cc
   crypto/radix.cc
   crypto/siphash.cc
+  crypto/x25519.cc
 
   data/blocks/date_time.cc
   data/blocks/i2np.cc

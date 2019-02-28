@@ -37,9 +37,12 @@
 #include <noise/protocol/handshakestate.h>
 
 #include "src/exception/exception.h"
-#include "src/crypto/meta.h"
-#include "src/ntcp2/meta.h"
 
+#include "src/crypto/chacha_poly1305.h"
+#include "src/crypto/sha.h"
+#include "src/crypto/x25519.h"
+
+#include "src/ntcp2/meta.h"
 #include "src/ntcp2/role.h"
 
 // Simple wrappers for NoiseC functions
@@ -50,6 +53,9 @@ namespace ntcp2
 {
 namespace noise
 {
+using HandshakeState = NoiseHandshakeState;  //< Handshake state alias
+using CipherState = NoiseCipherState;  //< Handshake state alias
+
 /// @brief Container for raw Noise buffers
 struct RawBuffers
 {
@@ -63,13 +69,13 @@ struct RawBuffers
 /// @brief Initialize Noise handshake state
 /// @param state Noise handshakestate to initialize
 /// @throw Runtime error if Noise library returns an error
-template <class Role_t>
+template <class RoleT>
 inline void init_handshake(
     NoiseHandshakeState** state,
     const exception::Exception& ex)
 {
   if (const int err = noise_handshakestate_new_by_name(
-          state, tini2p::meta::ntcp2::name(), Role_t().id()))
+          state, tini2p::meta::ntcp2::name(), RoleT().id()))
     ex.throw_ex<std::runtime_error>("error initializing handshake state", err);
 }
 
@@ -131,7 +137,7 @@ inline void read_message(
 /// @throw If Noise library returns error
 inline void get_local_public_key(
     const NoiseHandshakeState* state,
-    crypto::x25519::PubKey& key,
+    crypto::X25519::pubkey_t& key,
     const exception::Exception& ex)
 {
   auto* dh = noise_handshakestate_get_local_keypair_dh(state);
@@ -149,7 +155,7 @@ inline void get_local_public_key(
 /// @throw If Noise library returns error
 inline void get_remote_public_key(
     const NoiseHandshakeState* state,
-    crypto::x25519::PubKey& key,
+    crypto::X25519::pubkey_t& key,
     const exception::Exception& ex)
 {
   auto* dh = noise_handshakestate_get_remote_public_key_dh(state);
@@ -183,7 +189,7 @@ inline void generate_keypair(
 /// @throw If Noise library returns error
 inline void set_local_keypair(
     NoiseHandshakeState* state,
-    const crypto::x25519::Keypair& keys,
+    const crypto::X25519::keypair_t& keys,
     const exception::Exception& ex)
 {
   auto* dh = noise_handshakestate_get_local_keypair_dh(state);
@@ -191,7 +197,11 @@ inline void set_local_keypair(
     ex.throw_ex<std::runtime_error>("unable to get local keypair.");
 
   if (const int err = noise_dhstate_set_keypair(
-          dh, keys.sk.data(), keys.sk.size(), keys.pk.data(), keys.pk.size()))
+          dh,
+          keys.pvtkey.data(),
+          keys.pvtkey.size(),
+          keys.pubkey.data(),
+          keys.pubkey.size()))
     ex.throw_ex<std::runtime_error>("unable to set keypair", err);
 }
 
@@ -202,7 +212,7 @@ inline void set_local_keypair(
 /// @throw If Noise library returns error
 inline void get_handshake_hash(
     const NoiseHandshakeState* state,
-    crypto::hash::Sha256Digest& hash,
+    crypto::Sha256::digest_t& hash,
     const exception::Exception& ex)
 {
   if (const int err = noise_handshakestate_get_handshake_hash(
@@ -217,7 +227,7 @@ inline void get_handshake_hash(
 /// @throw Runtime error if Noise library returns error
 inline void set_remote_public_key(
     NoiseHandshakeState* state,
-    const crypto::x25519::PubKey& key,
+    const crypto::X25519::pubkey_t& key,
     const exception::Exception& ex)
 {
   auto* dh = noise_handshakestate_get_remote_public_key_dh(state);
@@ -253,7 +263,7 @@ inline void split(
     NoiseHandshakeState* state,
     NoiseCipherState** alice_to_bob,
     NoiseCipherState** bob_to_alice,
-    crypto::x25519::PubKey& temp,
+    crypto::X25519::pubkey_t& temp,
     const exception::Exception& ex)
 {
   if (const int err = noise_handshakestate_split_save(
@@ -273,7 +283,7 @@ inline void encrypt(
     const exception::Exception& ex)
 {
   NoiseBuffer buf;
-  noise_buffer_set_inout(buf, buffer, size - crypto::hash::Poly1305Len, size);
+  noise_buffer_set_inout(buf, buffer, size - crypto::Poly1305::DigestLen, size);
   if (const int err = noise_cipherstate_encrypt(state, &buf))
     ex.throw_ex<std::runtime_error>("error encrypting message", err);
 }

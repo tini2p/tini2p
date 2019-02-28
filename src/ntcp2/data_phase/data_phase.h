@@ -30,48 +30,178 @@
 #ifndef SRC_NTCP2_DATA_PHASE_DATA_PHASE_H_
 #define SRC_NTCP2_DATA_PHASE_DATA_PHASE_H_
 
-#include <boost/any.hpp>
-#include <boost/variant.hpp>
+#include "src/crypto/siphash.h"
 
-#include "src/data/blocks/date_time.h"
-#include "src/data/blocks/i2np.h"
-#include "src/data/blocks/options.h"
-#include "src/data/blocks/padding.h"
-#include "src/data/blocks/router_info.h"
-#include "src/data/blocks/termination.h"
-
-#include "src/ntcp2/data_phase/kdf.h"
+#include "src/ntcp2/data_phase/message.h"
 
 namespace tini2p
 {
 namespace ntcp2
 {
-/// @struct DataPhaseMessage
-struct DataPhaseMessage
-{
-  std::vector<std::unique_ptr<tini2p::data::Block>> blocks;
-  std::vector<std::uint8_t> buffer;
-
-  boost::endian::big_uint16_t size() const
-  {
-    boost::endian::big_uint16_t size = 0;
-    for (const auto& block : blocks)
-      size += block->size();
-
-    return size;
-  }
-};
-
 /// @class DataPhase
-template <class Role_t>
+/// @brief DataPhase implementation
+/// @tparam RoleT Handshake role
+template <class RoleT>
 class DataPhase
 {
-  Role_t role_;
-  NoiseHandshakeState* state_;
-  DataPhaseKDF kdf_;
+ public:
+  enum
+  {
+    AskStringLen = 4,
+    SipStringLen = 7,
+    SipMasterInLen = crypto::Sha256::DigestLen + SipStringLen,
+  };
+
+  using state_t = noise::HandshakeState;  //< Handshake state trait alias
+  using message_t = DataPhaseMessage;  //< Message trait alias
+
+ private:
+  /// @class DataPhase: KDF
+  class KDF
+  {
+   public:
+    using sip_key_part_t = crypto::hash::SipHashKeyPart;  //< SipHash key part trait alias
+    using sip_iv_t = crypto::hash::SipHashIV;  //< SipHash IV trait alias
+    using handshake_hash_t = crypto::Sha256::digest_t;  //< Hash trait alias
+
+    /// @brief Create a DataPhaseKDF from a given handshake state and initial role
+    /// @param state Pointer to valid Noise handshake state
+    /// @param role Noise role during first DataPhase message
+    /// @throw Invalid argument on null handshake state
+    KDF(state_t* state)
+        : state_(state),
+          key_pt1_ab_{},
+          key_pt2_ab_{},
+          iv_ab_{},
+          key_pt1_ba_{},
+          key_pt2_ba_{},
+          iv_ba_{}
+    {
+      const exception::Exception ex{"DataPhaseKDF", __func__};
+
+      if (!state)
+        ex.throw_ex<std::invalid_argument>("null handshake state.");
+
+      crypto::X25519::pubkey_t temp_key;
+
+      if (std::is_same<RoleT, Initiator>::value)
+        noise::split(state_, &alice_to_bob_, &bob_to_alice_, temp_key, ex);
+      else
+        noise::split(state_, &bob_to_alice_, &alice_to_bob_, temp_key, ex);
+
+      noise::get_handshake_hash(state_, h_, ex);
+      InitSipKeys(temp_key);
+    }
+
+    /// @brief Process de/obfuscated encrypted message length
+    /// @param length Packet length to de/obfuscate
+    /// @param direction Flag indicating direction of the message
+    /// @detail Advances SipHash key state, deriving a new IV every call, see spec
+    void ProcessLength(
+        boost::endian::big_uint16_t& length,
+        const message_t::Dir direction)
+    {
+      length ^= DeriveMask(direction);
+    }
+
+    /// @brief Get a const reference to the final handshake hash
+    const handshake_hash_t& hash() const noexcept
+    {
+      return h_;
+    }
+
+    /// Get a non-const pointer to the cipherstate for messages from Alice to Bob
+    decltype(auto) cipherstate(const message_t::Dir direction) noexcept
+    {
+      return direction == message_t::Dir::AliceToBob ? alice_to_bob_
+                                                     : bob_to_alice_;
+    }
+
+   private:
+    void InitSipKeys(crypto::X25519::pubkey_t& temp_key)
+    {
+      using tini2p::crypto::HmacSha256;
+      using ask_str_t = crypto::FixedSecBytes<AskStringLen>;
+      using sip_str_t = crypto::FixedSecBytes<SipStringLen>;
+      using sip_master_in_t = crypto::FixedSecBytes<SipMasterInLen>;
+      using null_t = std::array<std::uint8_t, 0>;
+
+      sip_master_in_t sip_master_in;
+
+      // concat handshake hash: h || "siphash"
+      tini2p::BytesWriter<sip_master_in_t> sip_in_writer(sip_master_in);
+      sip_in_writer.write_data(h_);
+      sip_in_writer.write_data(
+          sip_str_t{{0x73, 0x69, 0x70, 0x68, 0x61, 0x73, 0x68}});
+
+      HmacSha256::digest_t ask_master, sip_master;
+
+      constexpr static const std::array<std::uint8_t, 1> one_byte{0x01};
+
+      // Derive SipHash temp key from handshake temp key
+      HmacSha256::Hash(
+          temp_key.buffer(), ask_str_t{{0x61, 0x73, 0x6B, 0x01}}, ask_master);
+      HmacSha256::Hash(ask_master, sip_master_in, temp_key.buffer());
+      HmacSha256::Hash(temp_key.buffer(), one_byte, sip_master);
+      HmacSha256::Hash(sip_master, null_t{}, temp_key.buffer());
+
+      HmacSha256::digest_t sip_keys_ab, sip_keys_ba;
+
+      // Derive SipHash keys for Alice to Bob
+      HmacSha256::Hash(temp_key.buffer(), one_byte, sip_keys_ab);
+
+      tini2p::BytesReader<HmacSha256::digest_t> ab_reader(sip_keys_ab);
+      ab_reader.read_data(key_pt1_ab_);
+      ab_reader.read_data(key_pt2_ab_);
+      ab_reader.read_data(iv_ab_);
+
+      crypto::FixedSecBytes<HmacSha256::DigestLen + 1> sip_keys_ba_in;
+      tini2p::BytesWriter<decltype(sip_keys_ba_in)> sip_ba_in_writer(sip_keys_ba_in);
+      sip_ba_in_writer.write_data(sip_keys_ab);
+      sip_ba_in_writer.write_bytes<std::uint8_t>(0x02);
+
+      // Derive SipHash keys for Bob to Alice
+      HmacSha256::Hash(temp_key.buffer(), sip_keys_ba_in, sip_keys_ba);
+
+      tini2p::BytesReader<HmacSha256::digest_t> ba_reader(sip_keys_ba);
+      ba_reader.read_data(key_pt1_ba_);
+      ba_reader.read_data(key_pt2_ba_);
+      ba_reader.read_data(iv_ba_);
+    }
+
+    boost::endian::big_uint16_t DeriveMask(const message_t::Dir direction)
+    {
+      boost::endian::big_uint16_t mask;
+      crypto::hash::SipHashDigest digest;
+      if (direction == message_t::Dir::AliceToBob)
+        {
+          crypto::hash::SipHash(key_pt1_ab_, key_pt2_ab_, iv_ab_, digest);
+          std::copy(
+              digest.begin(), digest.begin() + iv_ab_.size(), iv_ab_.begin());
+        }
+      else
+        {
+          crypto::hash::SipHash(key_pt1_ba_, key_pt2_ba_, iv_ba_, digest);
+          std::copy(
+              digest.begin(), digest.begin() + iv_ba_.size(), iv_ba_.begin());
+        }
+      tini2p::read_bytes(digest.data(), mask);
+      return mask;
+    }
+
+    sip_key_part_t key_pt1_ab_, key_pt2_ab_, key_pt1_ba_, key_pt2_ba_;
+    sip_iv_t iv_ab_, iv_ba_;
+    handshake_hash_t h_;
+    state_t* state_;
+    noise::CipherState* alice_to_bob_;
+    noise::CipherState* bob_to_alice_;
+  };
 
  public:
-  DataPhase(NoiseHandshakeState* state) : state_(state), kdf_(state, role_)
+  using role_t = RoleT;  //< Role trait alias
+  using kdf_t = DataPhase::KDF;  //< KDF trait alias
+
+  DataPhase(state_t* state) : state_(state), kdf_(state)
   {
     if (!state)
       exception::Exception{"DataPhase", __func__}
@@ -80,9 +210,8 @@ class DataPhase
 
   /// @brief Write and encrypt a message
   /// @param message DataPhase message to write
-  void Write(DataPhaseMessage& message)
+  void Write(message_t& message)
   {
-    namespace meta = tini2p::meta::ntcp2::data_phase;
     namespace block = tini2p::meta::block;
 
     const exception::Exception ex{"DataPhase", __func__};
@@ -91,144 +220,72 @@ class DataPhase
     if (!length)
       ex.throw_ex<std::invalid_argument>("empty message.");
 
-    length += crypto::hash::Poly1305Len;
-    message.buffer.resize(meta::SizeSize + length);
+    length += crypto::Poly1305::DigestLen;
+    message.buffer.resize(message_t::SizeLen + length);
 
-    const auto dir = role_.id() == noise::InitiatorRole ? meta::BobToAlice
-                                                        : meta::AliceToBob;
-
-    tini2p::BytesWriter<decltype(message.buffer)> writer(message.buffer);
+    const auto dir = std::is_same<role_t, Initiator>::value
+                         ? message_t::Dir::BobToAlice
+                         : message_t::Dir::AliceToBob;
 
     // obfuscate message length
     kdf_.ProcessLength(length, dir);
+    tini2p::write_bytes(message.buffer.data(), length);
 
-    writer.write_bytes(length);
-
-    bool last_block = false;
-    bool term_block = false;
-    for (const auto& block : message.blocks)
-    {
-      if (last_block)
-        ex.throw_ex<std::logic_error>("padding must be the last block.");
-
-      if (term_block && block->type() != block::PaddingID)
-        ex.throw_ex<std::logic_error>(
-            "termination followed by non-padding block.");
-
-      if (block->type() == block::PaddingID)
-        last_block = true;
-
-      if (block->type() == block::TerminationID)
-        term_block = true;
-
-      block->serialize();
-      writer.write_data(block->buffer());
-    }
+    // seriailze message blocks to buffer
+    message.serialize();
 
     // encrypt message in place
     noise::encrypt(
         kdf_.cipherstate(dir),
-        &message.buffer[meta::SizeSize],
-        message.buffer.size() - meta::SizeSize,
+        &message.buffer[message_t::SizeLen],
+        message.buffer.size() - message_t::SizeLen,
         ex);
   }
 
   /// @brief Decrypt and read a message
   /// @param message DataPhase message to read
   /// @param deobfs_len Flag to de-obfuscate the message length
-  void Read(DataPhaseMessage& message, const bool deobfs_len = true)
+  void Read(message_t& message, const bool deobfs_len = true)
   {
-    namespace meta = tini2p::meta::ntcp2::data_phase;
-
     const exception::Exception ex{"DataPhase", __func__};
 
     auto& buf = message.buffer;
-    if (buf.size() < meta::MinSize || buf.size() > meta::MaxSize)
+    if (buf.size() < message_t::MinSize || buf.size() > message_t::MaxSize)
       ex.throw_ex<std::length_error>("invalid ciphertext size.");
 
     boost::endian::big_uint16_t length;
     tini2p::read_bytes(buf.data(), length);
 
-    const auto dir = role_.id() == noise::InitiatorRole ? meta::AliceToBob
-                                                        : meta::BobToAlice;
+    const auto dir = std::is_same<role_t, Initiator>::value
+                         ? message_t::Dir::AliceToBob
+                         : message_t::Dir::BobToAlice;
+
     if (deobfs_len)
       kdf_.ProcessLength(length, dir);
 
-    if (length - crypto::hash::Poly1305Len <= 0)
+    if (length - crypto::Poly1305::DigestLen <= 0)
       return;
 
-    if (length > meta::MaxSize - meta::SizeSize)
-      ex.throw_ex<std::length_error>("invalid plaintext size.");
+    if (length > message_t::MaxSize - message_t::SizeLen)
+      ex.throw_ex<std::length_error>("invalid message size.");
 
-    noise::decrypt(kdf_.cipherstate(dir), &buf[meta::SizeSize], length, ex);
+    noise::decrypt(kdf_.cipherstate(dir), &buf[message_t::SizeLen], length, ex);
 
-    ParseBlocks(message);
+    // deserialize blocks from buffer
+    message.buffer.resize(message_t::SizeLen + length);
+    message.deserialize();
   }
 
   /// @brief Get a non-const reference to the KDF
-  decltype(kdf_)& kdf() noexcept
+  kdf_t& kdf() noexcept
   {
     return kdf_;
   }
 
  private:
-  void ParseBlocks(DataPhaseMessage& message)
-  {
-    namespace block_m = tini2p::meta::block;
-
-    using BlockPtr = std::unique_ptr<tini2p::data::Block>;
-
-    const exception::Exception ex{"DataPhase", __func__};
-
-    tini2p::BytesReader<decltype(message.buffer)> reader(message.buffer);
-    reader.skip_bytes(block_m::SizeSize);
-
-    bool last_block = false;
-
-    decltype(message.blocks) blocks;
-
-    while (reader.gcount() > crypto::hash::Poly1305Len)
-      {
-        std::uint8_t type;
-        tini2p::read_bytes(&message.buffer[reader.count()], type);
-
-        boost::endian::big_uint16_t size;
-        tini2p::read_bytes(
-            &message.buffer[reader.count() + block_m::SizeOffset], size);
-
-        const auto b = message.buffer.begin() + reader.count();
-        const auto e = b + block_m::HeaderSize + size;
-
-        // final block(s) must be: padding or termination->padding
-        //   disallows multiple padding blocks
-        if (last_block && blocks.back()->type() != block_m::TerminationID)
-          ex.throw_ex<std::logic_error>("invalid block ordering.");
-
-        if (type == block_m::DateTimeID)
-          blocks.emplace_back(BlockPtr(new tini2p::data::DateTimeBlock(b, e)));
-        else if (type == block_m::I2NPMessageID)
-          blocks.emplace_back(BlockPtr(new tini2p::data::I2NPBlock(b, e)));
-        else if (type == block_m::OptionsID)
-          blocks.emplace_back(BlockPtr(new tini2p::data::OptionsBlock(b, e)));
-        else if (type == block_m::RouterInfoID)
-          blocks.emplace_back(BlockPtr(new tini2p::data::RouterInfoBlock(b, e)));
-        else if (type == block_m::PaddingID)
-          {
-            blocks.emplace_back(BlockPtr(new tini2p::data::PaddingBlock(b, e)));
-            last_block = true;
-          }
-        else if (type == block_m::TerminationID)
-          {
-            blocks.emplace_back(BlockPtr(new tini2p::data::TerminationBlock(b, e)));
-            last_block = true;
-          }
-        else
-          ex.throw_ex<std::logic_error>("invalid block type.");
-
-        reader.skip_bytes(e - b);
-      }
-    message.blocks = std::move(blocks);
-  }
+  role_t role_;
+  state_t* state_;
+  kdf_t kdf_;
 };
 }  // namespace ntcp2
 }  // namespace tini2p

@@ -31,16 +31,16 @@
 
 #include "tests/unit_tests/mock/handshake.h"
 
-using tini2p::data::Info;
-
-using BlockPtr = std::unique_ptr<tini2p::data::Block>;
-using tini2p::data::DateTimeBlock;
-using tini2p::data::PaddingBlock;
-using tini2p::data::RouterInfoBlock;
-using tini2p::data::TerminationBlock;
-
 struct DataPhaseFixture : public MockHandshake
 {
+  using Info = tini2p::data::Info;
+
+  using BlockPtr = tini2p::data::Block::pointer;
+  using DateTimeBlock = tini2p::data::DateTimeBlock;
+  using PaddingBlock = tini2p::data::PaddingBlock;
+  using RouterInfoBlock = tini2p::data::RouterInfoBlock;
+  using TerminationBlock = tini2p::data::TerminationBlock;
+
   DataPhaseFixture()
   {
     ValidSessionRequest();
@@ -96,13 +96,13 @@ TEST_CASE_METHOD(
   REQUIRE_NOTHROW(dp_initiator->Write(dp_message));
 
   // invalidate ciphertext
-  crypto::RandBytes(dp_message.buffer.data(), dp_message.buffer.size());
+  crypto::RandBytes(dp_message.buffer);
   REQUIRE_THROWS(dp_responder->Read(dp_message));
 
   REQUIRE_NOTHROW(dp_responder->Write(dp_message));
 
   // invalidate ciphertext
-  crypto::RandBytes(dp_message.buffer.data(), dp_message.buffer.size());
+  crypto::RandBytes(dp_message.buffer);
   REQUIRE_THROWS(dp_initiator->Read(dp_message));
 }
 
@@ -153,12 +153,15 @@ TEST_CASE_METHOD(
   REQUIRE_NOTHROW(dp_initiator->Write(dp_message));
 
   // invalidate the size in the raw message buffer
-  crypto::RandBytes(dp_message.buffer.data(), meta::data_phase::SizeSize);
+  crypto::RandBytes(dp_message.buffer);
   REQUIRE_THROWS(dp_responder->Read(dp_message));
 }
 
-TEST_CASE("DataPhase rejects null handshake state", "[dp]")
+TEST_CASE_METHOD(
+    DataPhaseFixture,
+    "DataPhase rejects null handshake state",
+    "[dp]")
 {
-  REQUIRE_THROWS(DataPhase<Initiator>(nullptr));
-  REQUIRE_THROWS(DataPhase<Responder>(nullptr));
+  REQUIRE_THROWS(sess_init_t::data_impl_t(nullptr));
+  REQUIRE_THROWS(sess_resp_t::data_impl_t(nullptr));
 }

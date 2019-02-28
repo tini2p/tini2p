@@ -68,6 +68,13 @@ class SecBase
   {
   }
 
+  SecBase(
+      typename buffer_t::const_pointer data,
+      const typename buffer_t::size_type size)
+      : buf_(data, size)
+  {
+  }
+
   explicit SecBase(
       std::initializer_list<typename buffer_t::value_type> init_list)
       : buf_(init_list)
@@ -81,7 +88,11 @@ class SecBase
   using const_iterator = typename buffer_t::const_iterator;  //< Const iterator trait alias
   using size_type = typename buffer_t::size_type;  //< Size type trait alias
 
-  ~SecBase() { sodium_memzero(buf_.data(), buf_.size()); }
+  ~SecBase()
+  {
+    if (buf_.data())
+      sodium_memzero(buf_.data(), buf_.size());
+  }
 
   /// @brief Get a non-const pointer to the beginning of the buffer
   pointer data() noexcept
@@ -222,16 +233,45 @@ class SecBytes : public SecBase<std::vector<std::uint8_t>>
 
   /// @brief Resize the underlying buffer
   void resize(const std::size_t size) { SecBase<buffer_t>::buf_.resize(size); }
+
+  /// @brief Insert iterator range into the buffer
+  /// @param self_begin Begin inserting into the internal buffer at this iterator
+  /// @param oth_begin Beginning of the iterator range to insert
+  /// @param oth_end Ending of the iterator range to insert
+  template <class InputIt>
+  void insert(iterator self_begin, InputIt oth_begin, InputIt oth_end)
+  {
+    using s = SecBase<buffer_t>;
+
+    const exception::Exception ex{"SecBytes", __func__};
+
+    const auto begin_it = SecBase<buffer_t>::buf_.begin();
+    const auto end_it = SecBase<buffer_t>::buf_.end();
+
+    if (oth_begin >= begin_it && oth_begin <= end_it)
+      ex.throw_ex<std::invalid_argument>("invalid beginning of range.");
+
+    if (oth_end >= begin_it && oth_end <= end_it)
+      ex.throw_ex<std::invalid_argument>("invalid ending of range.");
+
+    if (oth_end < oth_begin)
+      ex.throw_ex<std::invalid_argument>("invalid range.");
+
+    if (self_begin < begin_it || self_begin > end_it)
+      ex.throw_ex<std::invalid_argument>("invalid starting position.");
+
+    SecBase<buffer_t>::buf_.insert(self_begin, oth_begin, oth_end);
+  }
 };
 
 /// @alias FixedSecBytes
 /// @brief Alias for secure-wiped memory buffer (fixed size)
 /// @detail Used for refactor ease and readability
-template <class T = std::uint8_t, std::size_t N>
-class FixedSecBytes : public SecBase<std::array<T, N>>
+template <std::size_t N>
+class FixedSecBytes : public SecBase<std::array<std::uint8_t, N>>
 {
  public:
-  using buffer_t = std::array<T, N>;
+  using buffer_t = std::array<std::uint8_t, N>;
 
   FixedSecBytes() : SecBase<buffer_t>{} {}
 
@@ -246,42 +286,64 @@ class FixedSecBytes : public SecBase<std::array<T, N>>
   /// @param data Pointer to the beginning of the input buffer
   /// @param size Size of the input buffer
   FixedSecBytes(
-      typename buffer_t::const_iterator data,
+      typename buffer_t::const_pointer data,
       typename buffer_t::size_type size)
       : SecBase<buffer_t>()
   {
-    if (size > N)
-      exception::Exception{"FixedSecBytes"}.throw_ex<std::invalid_argument>(
-          "invalid buffer size.");
+    const exception::Exception ex{"FixedSecBytes"};
 
-    std::copy_n(data, size, SecBase<buffer_t>::buf_.begin());
+    if (!data || !size)
+      ex.throw_ex<std::invalid_argument>("null input.");
+
+    if (size > N)
+      std::copy_n(data, N, SecBase<buffer_t>::buf_.data());
+    else
+      std::copy_n(data, size, SecBase<buffer_t>::buf_.data());
   }
 
   /// @brief Create a secure buffer from an iterator range
-  /// @param begin Beginning iterator for the input buffer
-  /// @param end Ending iterator for the input buffer
+  /// @detail Copies up to N bytes from the iterator range
+  /// @param begin Beginning of the iterator range
+  /// @param end End of the iterator range
   FixedSecBytes(
       typename buffer_t::const_iterator begin,
       typename buffer_t::const_iterator end)
       : SecBase<buffer_t>()
   {
-    if (end - begin > N || end < begin)
+    if (end < begin)
       exception::Exception{"FixedSecBytes"}.throw_ex<std::invalid_argument>(
           "invalid iterator range.");
 
-    std::copy(begin, end, SecBase<buffer_t>::buf_.begin());
+    if (end - begin > N) 
+      std::copy(begin, begin + N, SecBase<buffer_t>::buf_.begin());
+    else
+      std::copy(begin, end, SecBase<buffer_t>::buf_.begin());
   }
 
   /// @brief Create a secure buffer from an initializer list
   /// @param init_list Initializer list for the secure buffer
-  explicit FixedSecBytes(std::initializer_list<T> init_list)
+  explicit FixedSecBytes(std::initializer_list<std::uint8_t> init_list)
       : SecBase<buffer_t>()
   {
     if (init_list.size() > N)
       exception::Exception{"FixedSecBytes"}.throw_ex<std::invalid_argument>(
           "invalid initializer list size.");
 
-    std::copy(inint_list.begin(), init_list.end(), SecBase<buffer_t>::begin());
+    std::copy(init_list.begin(), init_list.end(), SecBase<buffer_t>::begin());
+  }
+
+  /// @brief Create a fixed size secure buffer from a dynamic buffer
+  /// @detail Copies up to N bytes from the dynamic buffer
+  /// @param buf Dynamic sized secure buffer to copy from
+  explicit FixedSecBytes(const SecBytes& buf)
+  {
+    const auto begin = buf.begin();
+    const auto end = buf.end();
+
+    if (end - begin > N) 
+      std::copy(begin, begin + N, SecBase<buffer_t>::buf_.begin());
+    else
+      std::copy(begin, end, SecBase<buffer_t>::buf_.begin());
   }
 };
 }  // namespace crypto

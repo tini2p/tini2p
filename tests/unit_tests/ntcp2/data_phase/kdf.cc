@@ -42,19 +42,22 @@ struct DataPhaseKDFFixture : public MockHandshake
     ValidSessionConfirmed();
 
     // Switch roles according to spec
-    initiator = std::make_unique<DataPhaseKDF>(responder_state, Initiator());
-    responder = std::make_unique<DataPhaseKDF>(initiator_state, Responder());
+    initiator =
+        std::make_unique<sess_init_t::data_impl_t::kdf_t>(responder_state);
+
+    responder =
+        std::make_unique<sess_resp_t::data_impl_t::kdf_t>(initiator_state);
   }
 
-  std::unique_ptr<DataPhaseKDF> initiator;
-  std::unique_ptr<DataPhaseKDF> responder;
+  std::unique_ptr<sess_init_t::data_impl_t::kdf_t> initiator;
+  std::unique_ptr<sess_resp_t::data_impl_t::kdf_t> responder;
 };
 
 TEST_CASE_METHOD(DataPhaseKDFFixture, "DataPhaseKDF generates keys", "[dpkdf]")
 {
   using Catch::Matchers::Equals;
   using vec = std::vector<std::uint8_t>;
-  using tini2p::meta::ntcp2::data_phase::Direction;
+  using Dir = sess_init_t::data_msg_t::Dir;
 
   boost::endian::big_uint16_t tmp = 17, msg_len = 17;
   constexpr const bool alice_to_bob = true;
@@ -67,28 +70,32 @@ TEST_CASE_METHOD(DataPhaseKDFFixture, "DataPhaseKDF generates keys", "[dpkdf]")
 
 
   // check initial length is obfuscated then deobfuscated correctly
-  REQUIRE_NOTHROW(initiator->ProcessLength(msg_len, Direction::BobToAlice));
+  REQUIRE_NOTHROW(initiator->ProcessLength(msg_len, Dir::BobToAlice));
   REQUIRE(msg_len != tmp);
 
-  REQUIRE_NOTHROW(responder->ProcessLength(msg_len, Direction::BobToAlice));
+  REQUIRE_NOTHROW(responder->ProcessLength(msg_len, Dir::BobToAlice));
   REQUIRE(msg_len == tmp);
 
   // check response length is obfuscated then deobfuscated correctly
-  REQUIRE_NOTHROW(responder->ProcessLength(msg_len, Direction::AliceToBob));
+  REQUIRE_NOTHROW(responder->ProcessLength(msg_len, Dir::AliceToBob));
   REQUIRE(msg_len != tmp);
 
-  REQUIRE_NOTHROW(initiator->ProcessLength(msg_len, Direction::AliceToBob));
+  REQUIRE_NOTHROW(initiator->ProcessLength(msg_len, Dir::AliceToBob));
   REQUIRE(msg_len == tmp);
 
   // check follow-on length is obfuscated then deobfuscated correctly
-  REQUIRE_NOTHROW(initiator->ProcessLength(msg_len, Direction::BobToAlice));
+  REQUIRE_NOTHROW(initiator->ProcessLength(msg_len, Dir::BobToAlice));
   REQUIRE(msg_len != tmp);
 
-  REQUIRE_NOTHROW(responder->ProcessLength(msg_len, Direction::BobToAlice));
+  REQUIRE_NOTHROW(responder->ProcessLength(msg_len, Dir::BobToAlice));
   REQUIRE(msg_len == tmp);
 }
 
-TEST_CASE("DataPhaseKDF rejects null handshake state", "[dp]")
+TEST_CASE_METHOD(
+    DataPhaseKDFFixture,
+    "DataPhaseKDF rejects null handshake state",
+    "[dp]")
 {
-  REQUIRE_THROWS(DataPhaseKDF(nullptr, Role()));
+  REQUIRE_THROWS(sess_init_t::data_impl_t::kdf_t(nullptr));
+  REQUIRE_THROWS(sess_resp_t::data_impl_t::kdf_t(nullptr));
 }

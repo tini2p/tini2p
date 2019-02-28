@@ -44,7 +44,7 @@ class SessionListener
   tini2p::data::Info* info_;
   boost::asio::io_context ctx_;
   boost::asio::ip::tcp::acceptor acc_;
-  std::vector<std::unique_ptr<Session<SessionResponder>>> sessions_;
+  std::vector<std::unique_ptr<Session<Responder>>> sessions_;
   std::map<SessionKey, std::uint16_t> session_count_, connect_count_;
   std::set<SessionKey> blacklist_;
   boost::asio::steady_timer timer_;
@@ -115,8 +115,8 @@ class SessionListener
   /// @brief Get a session indexed by the remote key
   /// @param key Alice's static Noise key
   /// @return Non-const pointer to an NTCP2 session, or nullptr when no session found
-  ntcp2::Session<ntcp2::SessionResponder>* session(
-      const crypto::x25519::PubKey& key)
+  ntcp2::Session<ntcp2::Responder>* session(
+      const crypto::X25519::pubkey_t& key)
   {
     std::lock_guard<std::mutex> l(sessions_mutex_);
 

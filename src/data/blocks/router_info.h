@@ -107,7 +107,6 @@ class RouterInfoBlock : public Block
     check_params(ex);
 
     buf_.resize(size());
-
     tini2p::BytesWriter<decltype(buf_)> writer(buf_);
 
     writer.write_bytes(type_);

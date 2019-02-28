@@ -30,7 +30,7 @@
 #ifndef SRC_NTCP2_SESSION_CREATED_SESSION_CREATED_H_
 #define SRC_NTCP2_SESSION_CREATED_SESSION_CREATED_H_
 
-#include <noise/protocol/handshakestate.h>
+#include "src/ntcp2/noise.h"
 
 #include "src/ntcp2/session_created/kdf.h"
 #include "src/ntcp2/session_created/message.h"
@@ -40,60 +40,58 @@ namespace tini2p
 namespace ntcp2
 {
 /// @brief Session created message handler
-template <class Role_t>
+/// @tparam RoleT Handshake role
+template <class RoleT>
 class SessionCreated
 {
-  Role_t role_;
-  NoiseHandshakeState* state_;
-  SessionCreatedConfirmedKDF kdf_;
-  tini2p::crypto::aes::CBCEncryption encryption_;
-  tini2p::crypto::aes::CBCDecryption decryption_;
-
  public:
+  using role_t = RoleT;  //< Role trait alias
+  using obfse_t = tini2p::crypto::AES;  //< OBFSE impl trait alias
+  using request_msg_t = SessionRequestMessage;  //< SessionRequest message trait alias
+  using message_t = SessionCreatedMessage;  //< SessionCreated message trait alias
+  using kdf_t = SessionCreatedKDF;  //< KDF trait alias
+
   /// @brief Initialize a session created message handler
   /// @param state Handshake state from successful session requested exchange
   /// @param encrypted Encrypted payload from session requested message
   /// @param padding Padding from session requested message
   SessionCreated(
-      NoiseHandshakeState* state,
-      const SessionRequestMessage& message,
-      const tini2p::data::IdentHash& router_hash,
-      const tini2p::crypto::aes::IV& iv)
-      : state_(state),
-        kdf_(state),
-        encryption_(router_hash, iv),
-        decryption_(router_hash, iv)
+      noise::HandshakeState* state,
+      const request_msg_t& message,
+      const data::Identity::hash_t& router_hash,
+      const obfse_t::iv_t& iv)
+      : state_(state), kdf_(state), obfse_(router_hash, iv)
   {
     if (!state)
       exception::Exception{"SessionCreated", __func__}
           .throw_ex<std::invalid_argument>("null handshake state.");
 
-    kdf_.derive_keys(message);
+    kdf_.Derive(message);
   }
 
   /// @brief Process the session created message based on role
   /// @param message Session created message to process
   /// @throw Runtime error if Noise library returns error
-  void ProcessMessage(SessionCreatedMessage& message)
+  void ProcessMessage(message_t& message)
   {
-    if (role_.id() == noise::InitiatorRole)
+    if (std::is_same<role_t, Initiator>::value)
       Write(message);
     else
       Read(message);
   }
 
  private:
-  void Write(SessionCreatedMessage& message)
+  void Write(message_t& message)
   {
-    namespace meta = tini2p::meta::ntcp2::session_created;
-    namespace x25519 = tini2p::crypto::x25519;
+    using tini2p::crypto::X25519;
 
     const exception::Exception ex{"SessionCreated", __func__};
 
     NoiseBuffer data /*output*/, payload /*input*/;
 
     // ensure enough room for Noise payload + padding
-    message.data.resize(meta::NoisePayloadSize + message.options.pad_len);
+    message.data.resize(
+        message_t::NoisePayloadSize + message.options.pad_len);
     message.options.serialize();
 
     auto& in = message.options.buffer;
@@ -104,23 +102,24 @@ class SessionCreated
     noise::write_message(state_, &data, &payload, ex);
 
     // encrypt Y in-place
-    encryption_.Process(
-        out.data(), x25519::PubKeyLen, out.data(), x25519::PubKeyLen);
+    obfse_.Process<obfse_t::encrypt_m>(out.data(), X25519::PublicKeyLen);
 
     // save ciphertext for session confirmed KDF
-    save_ciphertext(message);
+    std::copy_n(
+        &message.data[message_t::CiphertextOffset],
+        message_t::CiphertextSize,
+        message.ciphertext.data());
 
     if (message.options.pad_len)
       std::copy(
           message.padding.begin(),
           message.padding.end(),
-          &message.data[meta::PaddingOffset]);
+          &message.data[message_t::PaddingOffset]);
   }
 
-  void Read(SessionCreatedMessage& message)
+  void Read(message_t& message)
   {
-    namespace meta = tini2p::meta::ntcp2::session_created;
-    namespace x25519 = tini2p::crypto::x25519;
+    using tini2p::crypto::X25519;
 
     const exception::Exception ex{"SessionCreated", __func__};
 
@@ -128,17 +127,20 @@ class SessionCreated
 
     auto& in = message.data;
     auto& out = message.options.buffer;
-    const auto& in_size = meta::NoisePayloadSize;
+    const auto& in_size = message_t::NoisePayloadSize;
 
-    if (in.size() < meta::MinSize || in.size() > meta::MaxSize)
+    if (in.size() < message_t::MinSize
+        || in.size() > message_t::MaxSize)
       ex.throw_ex<std::length_error>("invalid message size.");
 
     // decrypt Y in-place
-    decryption_.Process(
-        in.data(), x25519::PubKeyLen, in.data(), x25519::PubKeyLen);
+    obfse_.Process<obfse_t::decrypt_m>(in.data(), X25519::PublicKeyLen);
 
     // save ciphertext for session confirmed KDF
-    save_ciphertext(message);
+    std::copy_n(
+        &message.data[message_t::CiphertextOffset],
+        message_t::CiphertextSize,
+        message.ciphertext.data());
 
     noise::RawBuffers bufs{in.data(), in_size, out.data(), out.size()};
     noise::setup_buffers(payload, data, bufs);
@@ -146,26 +148,25 @@ class SessionCreated
 
     message.options.deserialize();
 
-    if (message.options.pad_len < meta::MinPaddingSize
-        || message.options.pad_len > meta::MaxPaddingSize)
+    if (message.options.pad_len < message_t::MinPaddingSize
+        || message.options.pad_len > message_t::MaxPaddingSize)
       ex.throw_ex<std::length_error>("invalid padding length.");
 
-    if (message.data.size() - meta::NoisePayloadSize == message.options.pad_len)
+    if (message.data.size() - message_t::NoisePayloadSize
+        == message.options.pad_len)
       {
         message.padding.resize(message.options.pad_len);
-        const auto& pad_begin = &message.data[meta::PaddingOffset];
-        auto& pad = message.padding;
-        std::copy(pad_begin, pad_begin + pad.size(), pad.begin());
+        std::copy_n(
+            &message.data[message_t::PaddingOffset],
+            message.padding.size(),
+            message.padding.data());
       }
   }
 
-  void save_ciphertext(SessionCreatedMessage& message)
-  {
-    namespace meta = tini2p::meta::ntcp2::session_created;
-
-    const auto* c = &message.data[meta::CiphertextOffset];
-    std::copy(c, c + meta::CiphertextSize, message.ciphertext.data());
-  }
+  role_t role_;
+  noise::HandshakeState* state_;
+  kdf_t kdf_;
+  obfse_t obfse_;
 };
 }  // namespace ntcp2
 }  // namespace tini2p

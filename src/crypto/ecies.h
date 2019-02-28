@@ -27,37 +27,9 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef SRC_NTCP2_SESSION_CONFIRMED_META_H_
-#define SRC_NTCP2_SESSION_CONFIRMED_META_H_
+#ifndef SRC_CRYPTO_ECIES_H_
+#define SRC_CRYPTO_ECIES_H_
 
-#include "src/crypto/hash.h"
-#include "src/crypto/key.h"
+#include "src/crypto/ecies/x25519.h"
 
-#include "src/ntcp2/session_created/meta.h"
-#include "src/ntcp2/session_created/options.h"
-
-namespace tini2p
-{
-namespace meta
-{
-namespace ntcp2
-{
-namespace session_confirmed
-{
-enum SessionConfirmedSizes : std::uint16_t
-{
-  MinPayloadSize = tini2p::meta::router::info::MinSize + tini2p::crypto::hash::Poly1305Len,
-  MaxPayloadSize = 65471,  // see spec
-  MinPaddingSize = 32,
-  MaxPaddingSize = MaxPayloadSize - MinPayloadSize,
-  PartOneSize = tini2p::crypto::x25519::PubKeyLen + tini2p::crypto::hash::Poly1305Len,
-  MinSize = PartOneSize + MinPayloadSize,
-  MaxSize = PartOneSize + MaxPayloadSize,
-};
-}  // namespace session_confirmed
-}  // namespace ntcp2
-}  // namespace meta
-}  // namespace tini2p
-
-#endif  // SRC_NTCP2_SESSION_CONFIRMED_META_H_
-
+#endif  // SRC_CRYPTO_ECIES_H_

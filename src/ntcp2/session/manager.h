@@ -45,7 +45,7 @@ class SessionManager
 {
   tini2p::data::Info* info_;
   std::unique_ptr<SessionListener> listener_, listener_v6_;
-  std::vector<std::unique_ptr<Session<SessionInitiator>>> out_sessions_;
+  std::vector<std::unique_ptr<Session<Initiator>>> out_sessions_;
   std::mutex out_sessions_mutex_;
 
  public:
@@ -161,12 +161,12 @@ class SessionManager
         out_sessions_.begin(),
         out_sessions_.end(),
         [dest](const decltype(out_sessions_)::value_type& session) {
-          return session->key().key == dest->noise_keys().pk;
+          return session->key().key == dest->id_keys().pubkey;
         });
 
     if (it != out_sessions_.end())
       {
-        const auto& dest_key = dest->noise_keys().pk;
+        const auto& dest_key = dest->id_keys().pubkey;
 
         ex.throw_ex<std::runtime_error>(
             ("session alread exists for key: "

@@ -49,44 +49,68 @@ namespace tini2p
 namespace ntcp2
 {
 /// @class Session
-/// @tparam SessionRole Noise role for the first data phase message
+/// @tparam RoleT Noise role for the first data phase message
 /// @detail On first data phase message, session initiator will be responder, vice versa
-template <class SessionRole>
+template <class RoleT>
 class Session
 {
-  NoiseHandshakeState* state_;
-  tini2p::data::Info *dest_, *info_;
-  SessionKey remote_key_, connect_key_;
-  crypto::aes::IV aes_iv_;
-  boost::asio::io_context ctx_;
-  boost::asio::ip::tcp::socket sock_;
-  boost::asio::ip::tcp::endpoint remote_host_;
-  std::unique_ptr<SessionRequestMessage> srq_msg_;
-  std::unique_ptr<SessionCreatedMessage> scr_msg_;
-  std::unique_ptr<SessionConfirmedMessage> sco_msg_;
-  std::unique_ptr<DataPhaseMessage> dp_msg_;
-  std::unique_ptr<DataPhase<SessionRole>> dp_;
-  std::size_t srq_xfer_, scr_xfer_, sco_xfer_, dp_xfer_;
-  std::condition_variable cv_;
-  bool ready_;
-  std::mutex ready_mutex_;
-  std::mutex msg_mutex_;
-  std::unique_ptr<std::thread> thread_;
-
  public:
+  using state_t = NoiseHandshakeState;  //< Handshake state alias
+  using info_t = data::Info;  //< RouterInfo trait alias
+  using dest_t = data::Info;  //< Destination trait alias
+  using obfse_t = crypto::AES;  //< Obfse crypto trait alias
+  using key_t = SessionKey;  //< Key trait alias
+
+  /// @alias created_impl_t
+  /// @brief SessionRequest implementation trait
+  using request_impl_t = std::conditional_t<
+      std::is_same<RoleT, Initiator>::value,
+      SessionRequest<Initiator>,
+      SessionRequest<Responder>>;
+
+  /// @alias created_impl_t
+  /// @brief SessionCreated implementation trait
+  using created_impl_t = std::conditional_t<
+      std::is_same<RoleT, Initiator>::value,
+      SessionCreated<Responder>,
+      SessionCreated<Initiator>>;
+
+  /// @alias confirmed_impl_t
+  /// @brief SessionConfirmed implementation trait
+  using confirmed_impl_t = std::conditional_t<
+      std::is_same<RoleT, Initiator>::value,
+      SessionConfirmed<Initiator>,
+      SessionConfirmed<Responder>>;
+
+  /// @alias data_impl_t
+  /// @brief DataPhase implementation trait
+  using data_impl_t = std::conditional_t<
+      std::is_same<RoleT, Initiator>::value,
+      DataPhase<Responder>,
+      DataPhase<Initiator>>;
+
+  using request_msg_t = typename request_impl_t::message_t;
+  using created_msg_t = typename created_impl_t::message_t;
+  using confirmed_msg_t = typename confirmed_impl_t::message_t;
+  using data_msg_t = typename data_impl_t::message_t;
+
+  using context_t = boost::asio::io_context;  //< ASIO context trait alias
+  using socket_t = boost::asio::ip::tcp::socket;  //< Socket trait alias
+  using endpoint_t = boost::asio::ip::tcp::endpoint;  //< Endpoint trait alias
+
   /// @brief Create a session for a destination
   /// @param dest RouterInfo for remote destination
   /// @param info RouterInfo for local router
-  Session(decltype(dest_) dest, decltype(info_) info)
+  Session(dest_t* dest, info_t* info)
       : dest_(dest),
         info_(info),
         ctx_(),
         sock_(ctx_),
-        sco_msg_(new SessionConfirmedMessage(
+        sco_msg_(new confirmed_msg_t(
             info_,
             crypto::RandInRange(
-                tini2p::meta::ntcp2::session_confirmed::MinPaddingSize,
-                tini2p::meta::ntcp2::session_confirmed::MaxPaddingSize))),
+                confirmed_msg_t::MinPaddingSize,
+                confirmed_msg_t::MaxPaddingSize))),
         ready_(false)
   {
     const exception::Exception ex{"Session", __func__};
@@ -97,24 +121,26 @@ class Session
     noise::init_handshake<Initiator>(&state_, ex);
 
     const auto& b64_key = dest_->options().entry(std::string("s"));
-    remote_key_.key.Assign(
+    std::copy_n(
         crypto::Base64::Decode(
             reinterpret_cast<const char*>(b64_key.data()), b64_key.size())
             .data(),
-        remote_key_.key.size());
+        remote_key_.key.size(),
+        remote_key_.key.data());
 
     const auto& b64_iv = dest_->options().entry(std::string("i"));
-    aes_iv_.Assign(
+    std::copy_n(
         crypto::Base64::Decode(
             reinterpret_cast<const char*>(b64_iv.data()), b64_iv.size())
             .data(),
-        aes_iv_.size());
+        aes_iv_.size(),
+        aes_iv_.data());
   }
 
   /// @brief Create a session for an incoming connection
   /// @param dest RouterInfo for remote destination
   /// @param info RouterInfo for local router
-  Session(decltype(info_) info, boost::asio::ip::tcp::socket socket)
+  Session(info_t* info, socket_t socket)
       : info_(info),
         sock_(std::move(socket)),
         ready_(false)
@@ -127,11 +153,12 @@ class Session
     noise::init_handshake<Responder>(&state_, ex);
 
     const auto& b64_iv = info_->options().entry(std::string("i"));
-    aes_iv_.Assign(
+    std::copy_n(
         crypto::Base64::Decode(
             reinterpret_cast<const char*>(b64_iv.data()), b64_iv.size())
             .data(),
-        aes_iv_.size());
+        aes_iv_.size(),
+        aes_iv_.data());
   }
 
   ~Session()
@@ -144,7 +171,7 @@ class Session
   /// @brief Start the NTCP2 session
   void Start(const meta::ntcp2::session::IP_t proto)
   {
-    if (std::is_same<SessionRole, SessionInitiator>::value)
+    if (std::is_same<RoleT, Initiator>::value)
       Connect(proto);
     else
       HandleSessionRequest();
@@ -190,7 +217,7 @@ class Session
 
   /// @brief Write a data phase message
   /// @param message Data phase message to write
-  void Write(ntcp2::DataPhaseMessage& message)
+  void Write(data_msg_t& message)
   {
     if (!ready_)
       exception::Exception{"Session", __func__}.throw_ex<std::runtime_error>(
@@ -201,7 +228,7 @@ class Session
 
   /// @brief Read a data phase message
   /// @param message Data phase message to store read results
-  void Read(ntcp2::DataPhaseMessage& message)
+  void Read(data_msg_t& message)
   {
     if (!ready_)
       exception::Exception{"Session", __func__}.throw_ex<std::runtime_error>(
@@ -212,7 +239,7 @@ class Session
 
   /// @brief Get a non-const reference to the socket
   /// @return Reference to session socket
-  decltype(sock_)& socket() noexcept
+  socket_t& socket() noexcept
   {
     return sock_;
   }
@@ -226,14 +253,14 @@ class Session
 
   /// @brief Get a const reference to the session key
   /// @detail Keyed under Bob's key for outbound connections, and under Alice's for inbound connections
-  const decltype(remote_key_)& key() const noexcept
+  const key_t& key() const noexcept
   {
     return remote_key_;
   }
 
   /// @brief Get a const reference to the connection key
   /// @detail Keyed as a Sha256 hash of initiating endpoint address
-  const decltype(connect_key_)& connect_key() const noexcept
+  const key_t& connect_key() const noexcept
   {
     return connect_key_;
   }
@@ -241,11 +268,11 @@ class Session
  private:
   void CalculateConnectKey()
   {
-    const auto& host = std::is_same<SessionRole, SessionInitiator>::value
+    const auto& host = std::is_same<RoleT, Initiator>::value
                            ? sock_.local_endpoint().address().to_string()
                            : sock_.remote_endpoint().address().to_string();
 
-    crypto::hash::Sha256(connect_key_.key, host);
+    crypto::Sha256::Hash(connect_key_.key.buffer(), host);
   }
 
   void Run()
@@ -272,8 +299,8 @@ class Session
     const exception::Exception ex{"Session", __func__};
 
     sock_.open(remote_host_.protocol());
-    sock_.set_option(boost::asio::ip::tcp::socket::reuse_address(true));
-    sock_.bind(boost::asio::ip::tcp::endpoint(remote_host_.protocol(), 0), ec);
+    sock_.set_option(socket_t::reuse_address(true));
+    sock_.bind(endpoint_t(remote_host_.protocol(), 0), ec);
     if (ec)
       ex.throw_ex<std::runtime_error>(ec.message().c_str());
 
@@ -290,11 +317,13 @@ class Session
 
   void HandleSessionRequest()
   {
-    if (std::is_same<SessionRole, ntcp2::SessionResponder>::value)
+    if (std::is_same<RoleT, Initiator>::value)
+      DoSessionRequest();
+    else
       {
         const auto func = __func__;
         sock_.async_wait(
-            boost::asio::ip::tcp::socket::wait_read,
+            socket_t::wait_read,
             [this, func](const boost::system::error_code& ec) {
               if (ec)
                 exception::Exception{"Session", func}
@@ -303,35 +332,33 @@ class Session
               DoSessionRequest();
             });
        }
-    else
-      DoSessionRequest();
 
     CalculateConnectKey();
   }
 
   void DoSessionRequest()
   {
-    namespace meta = tini2p::meta::ntcp2::session_request;
-
     const exception::Exception ex{"Session", __func__};
 
-    if (std::is_same<SessionRole, SessionInitiator>::value)
+    if (std::is_same<RoleT, Initiator>::value)
       {
-        SessionRequest<Initiator> srq(
+        request_impl_t srq(
             state_, dest_->identity().hash(), aes_iv_);
 
-        srq.kdf().set_local_keys(info_->noise_keys());
-        srq.kdf().derive_keys(remote_key_.key);
+        srq.kdf().set_local_keys(info_->id_keys());
+        srq.kdf().Derive(remote_key_.key);
 
         std::lock_guard<std::mutex> lg(msg_mutex_);
-        srq_msg_ = std::make_unique<SessionRequestMessage>(
+        srq_msg_ = std::make_unique<request_msg_t>(
             sco_msg_->payload_size(),
-            crypto::RandInRange(meta::MinPaddingSize, meta::MaxPaddingSize));
+            crypto::RandInRange(
+                request_msg_t::MinPaddingSize,
+                request_msg_t::MaxPaddingSize));
 
         srq.ProcessMessage(*srq_msg_);
         boost::asio::async_write(
             sock_,
-            boost::asio::buffer(srq_msg_->data),
+            boost::asio::buffer(srq_msg_->data.data(), srq_msg_->data.size()),
             [this, ex](
                 const boost::system::error_code& ec,
                 const std::size_t bytes_transferred) {
@@ -353,10 +380,10 @@ class Session
     else
       {
         std::lock_guard<std::mutex> lg(msg_mutex_);
-        srq_msg_ = std::make_unique<SessionRequestMessage>();
+        srq_msg_ = std::make_unique<request_msg_t>();
         boost::asio::async_read(
             sock_,
-            boost::asio::buffer(srq_msg_->data),
+            boost::asio::buffer(srq_msg_->data.data(), srq_msg_->data.size()),
             [this, ex](
                 const boost::system::error_code& ec,
                 const std::size_t bytes_transferred) {
@@ -364,7 +391,7 @@ class Session
                 ex.throw_ex<std::runtime_error>(ec.message().c_str());
 
               srq_xfer_ += bytes_transferred;
-              return meta::NoisePayloadSize - srq_xfer_;
+              return request_msg_t::NoisePayloadSize - srq_xfer_;
             },
             [this, ex](
                 const boost::system::error_code& ec,
@@ -372,12 +399,11 @@ class Session
               if (ec && ec != boost::asio::error::eof)
                 ex.throw_ex<std::runtime_error>(ec.message().c_str());
 
-              SessionRequest<Responder> srq(
-                  state_, info_->identity().hash(), aes_iv_);
+              request_impl_t srq(state_, info_->identity().hash(), aes_iv_);
 
               auto& kdf = srq.kdf();
-              kdf.set_local_keys(info_->noise_keys());
-              kdf.derive_keys();
+              kdf.set_local_keys(info_->id_keys());
+              kdf.Derive();
               srq.ProcessMessage(*srq_msg_);
               if (srq_msg_->options.pad_len)
                 {
@@ -385,7 +411,8 @@ class Session
                   srq_msg_->padding.resize(srq_msg_->options.pad_len);
                   boost::asio::async_read(
                       sock_,
-                      boost::asio::buffer(srq_msg_->padding),
+                      boost::asio::buffer(
+                          srq_msg_->padding.data(), srq_msg_->padding.size()),
                       [this, ex](
                           const boost::system::error_code& ec,
                           const std::size_t bytes_transferred) {
@@ -412,11 +439,11 @@ class Session
 
   void HandleSessionCreated()
   {
-    if (std::is_same<SessionRole, SessionInitiator>::value)
+    if (std::is_same<RoleT, Initiator>::value)
       {
         const auto func = __func__;
         sock_.async_wait(
-            boost::asio::ip::tcp::socket::wait_read,
+            socket_t::wait_read,
             [this, func](const boost::system::error_code& ec) {
               if (ec && ec != boost::asio::error::eof)
                 exception::Exception{"Session", func}
@@ -431,25 +458,24 @@ class Session
 
   void DoSessionCreated()
   {
-    namespace meta = tini2p::meta::ntcp2::session_created;
-
     const exception::Exception ex{"Session", __func__};
 
-    if (std::is_same<SessionRole, ntcp2::SessionInitiator>::value)
+    if (std::is_same<RoleT, Initiator>::value)
       {
         std::lock_guard<std::mutex> lg(msg_mutex_);
-        scr_msg_ = std::make_unique<SessionCreatedMessage>();
+        scr_msg_ = std::make_unique<created_msg_t>();
         boost::asio::async_read(
             sock_,
-            boost::asio::buffer(scr_msg_->data, meta::NoisePayloadSize),
+            boost::asio::buffer(
+                scr_msg_->data.data(), created_msg_t::NoisePayloadSize),
             [this, ex](
                 const boost::system::error_code& ec,
                 const std::size_t bytes_transferred) {
               if (ec && ec != boost::asio::error::eof)
                 ex.throw_ex<std::runtime_error>(ec.message().c_str());
 
-                scr_xfer_ += bytes_transferred;
-                return meta::NoisePayloadSize - scr_xfer_;
+              scr_xfer_ += bytes_transferred;
+              return created_msg_t::NoisePayloadSize - scr_xfer_;
             },
             [this, ex](
                 const boost::system::error_code& ec,
@@ -457,7 +483,7 @@ class Session
               if (ec && ec != boost::asio::error::eof)
                 ex.throw_ex<std::runtime_error>(ec.message().c_str());
 
-              SessionCreated<Responder> scr(
+              created_impl_t scr(
                   state_, *srq_msg_, dest_->identity().hash(), aes_iv_);
 
               scr.ProcessMessage(*scr_msg_);
@@ -467,7 +493,8 @@ class Session
                   scr_msg_->padding.resize(scr_msg_->options.pad_len);
                   boost::asio::async_read(
                       sock_,
-                      boost::asio::buffer(scr_msg_->padding),
+                      boost::asio::buffer(
+                          scr_msg_->padding.data(), scr_msg_->options.pad_len),
                       [this, ex](
                           const boost::system::error_code& ec,
                           const std::size_t bytes_transferred) {
@@ -493,15 +520,15 @@ class Session
     else
       {
         std::lock_guard<std::mutex> lg(msg_mutex_);
-        scr_msg_ = std::make_unique<SessionCreatedMessage>();
+        scr_msg_ = std::make_unique<created_msg_t>();
 
-        SessionCreated<Initiator> scr(
+        created_impl_t scr(
             state_, *srq_msg_, info_->identity().hash(), aes_iv_);
 
         scr.ProcessMessage(*scr_msg_);
         boost::asio::async_write(
             sock_,
-            boost::asio::buffer(scr_msg_->data),
+            boost::asio::buffer(scr_msg_->data.data(), scr_msg_->data.size()),
             [this, ex](
                 const boost::system::error_code& ec,
                 const std::size_t bytes_transferred) {
@@ -524,7 +551,9 @@ class Session
 
   void HandleSessionConfirmed()
   {
-    if (std::is_same<SessionRole, SessionResponder>::value)
+    if (std::is_same<RoleT, Initiator>::value)
+      DoSessionConfirmed();
+    else
       {
         const auto func = __func__;
         sock_.async_wait(
@@ -537,24 +566,22 @@ class Session
               DoSessionConfirmed();
             });
       }
-    else
-      DoSessionConfirmed();
   }
 
   void DoSessionConfirmed()
   {
     const exception::Exception ex{"Session", __func__};
 
-    if (std::is_same<SessionRole, SessionInitiator>::value)
+    if (std::is_same<RoleT, Initiator>::value)
       {
         std::lock_guard<std::mutex> lg(msg_mutex_);
-        SessionConfirmed<Initiator> sco(state_, *scr_msg_);
+        confirmed_impl_t sco(state_, *scr_msg_);
 
         sco.ProcessMessage(*sco_msg_, srq_msg_->options);
 
         boost::asio::async_write(
             sock_,
-            boost::asio::buffer(sco_msg_->data),
+            boost::asio::buffer(sco_msg_->data.data(), sco_msg_->data.size()),
             [this, ex](
                 const boost::system::error_code& ec,
                 std::size_t bytes_transferred) {
@@ -576,13 +603,12 @@ class Session
     else
       {
         std::lock_guard<std::mutex> lg(msg_mutex_);
-        sco_msg_ = std::make_unique<SessionConfirmedMessage>(
-            meta::ntcp2::session_confirmed::PartOneSize
-            + srq_msg_->options.m3p2_len);
+        sco_msg_ = std::make_unique<confirmed_msg_t>(
+            confirmed_msg_t::PartOneSize + srq_msg_->options.m3p2_len);
 
         boost::asio::async_read(
             sock_,
-            boost::asio::buffer(sco_msg_->data),
+            boost::asio::buffer(sco_msg_->data.data(), sco_msg_->data.size()),
             [this, ex](
                 const boost::system::error_code& ec,
                 std::size_t bytes_transferred) {
@@ -598,8 +624,7 @@ class Session
               if (ec && ec != boost::asio::error::eof)
                 ex.throw_ex<std::runtime_error>(ec.message().c_str());
 
-              SessionConfirmed<Responder> sco(state_, *scr_msg_);
-
+              confirmed_impl_t sco(state_, *scr_msg_);
               sco.ProcessMessage(*sco_msg_, srq_msg_->options);
 
               // get static key from Alice's RouterInfo
@@ -612,7 +637,7 @@ class Session
 
               // check static key from first frame matches RouterInfo static key, see spec
               const bool match = std::equal(s.begin(), s.end(), remote_key_.key.begin());
-              crypto::RandBytes(s.data(), s.size());  // overwrite key, no longer needed
+              crypto::RandBytes(s);  // overwrite key, no longer needed
 
               if (!match)
                 ex.throw_ex<std::logic_error>("static key does not match initial SessionRequest key.");
@@ -624,11 +649,11 @@ class Session
 
   void HandleDataPhase()
   {
-    if (std::is_same<SessionRole, SessionInitiator>::value)
+    if (std::is_same<RoleT, Initiator>::value)
       {
         const auto func = __func__;
         sock_.async_wait(
-            boost::asio::ip::tcp::socket::wait_read,
+            socket_t::wait_read,
             [this, func](const boost::system::error_code& ec) {
               if (ec && ec != boost::asio::error::eof)
                 exception::Exception{"Session", func}
@@ -643,19 +668,17 @@ class Session
 
   void DoDataPhase()
   {
-    namespace meta = tini2p::meta::ntcp2::data_phase;
-
     const exception::Exception ex{"Session", __func__};
-    if (std::is_same<SessionRole, SessionInitiator>::value)
+    if (std::is_same<RoleT, Initiator>::value)
       {
         std::lock_guard<std::mutex> lg(msg_mutex_);
-        dp_msg_ = std::make_unique<DataPhaseMessage>();
-        dp_msg_->buffer.resize(meta::MaxSize);
+        dp_msg_ = std::make_unique<data_msg_t>();
+        dp_msg_->buffer.resize(data_msg_t::MaxSize);
 
         // read message length from the socket
         boost::asio::async_read(
             sock_,
-            boost::asio::buffer(dp_msg_->buffer, meta::SizeSize),
+            boost::asio::buffer(dp_msg_->buffer.data(), data_msg_t::SizeLen),
             [this, ex](
                 const boost::system::error_code& ec,
                 std::size_t bytes_transferred) {
@@ -663,7 +686,7 @@ class Session
                 ex.throw_ex<std::runtime_error>(ec.message().c_str());
 
               dp_xfer_ += bytes_transferred;
-              return meta::SizeSize - dp_xfer_;
+              return data_msg_t::SizeLen - dp_xfer_;
             },
             [this, ex](
                 const boost::system::error_code& ec,
@@ -671,19 +694,19 @@ class Session
               if (ec && ec != boost::asio::error::eof)
                 ex.throw_ex<std::runtime_error>(ec.message().c_str());
 
-              dp_ = std::make_unique<DataPhase<SessionRole>>(state_);
+              dp_ = std::make_unique<data_impl_t>(state_);
 
               boost::endian::big_uint16_t obfs_len;
               tini2p::read_bytes(dp_msg_->buffer.data(), obfs_len);
 
-              dp_->kdf().ProcessLength(obfs_len, meta::BobToAlice);
+              dp_->kdf().ProcessLength(obfs_len, data_msg_t::Dir::BobToAlice);
 
               if(obfs_len)
                 {
                   dp_xfer_ = 0;
                   // read remaing message bytes
-                  dp_msg_->buffer.resize(meta::SizeSize + obfs_len);
-                  auto* data = &dp_msg_->buffer[meta::SizeSize];
+                  dp_msg_->buffer.resize(data_msg_t::SizeLen + obfs_len);
+                  auto* data = &dp_msg_->buffer[data_msg_t::SizeLen];
                   boost::asio::async_read(
                       sock_,
                       boost::asio::buffer(data, obfs_len),
@@ -729,17 +752,17 @@ class Session
     else
       {
         std::lock_guard<std::mutex> lg(msg_mutex_);
-        dp_ = std::make_unique<DataPhase<SessionRole>>(state_);
+        dp_ = std::make_unique<data_impl_t>(state_);
 
-        dp_msg_ = std::make_unique<DataPhaseMessage>();
-        dp_msg_->blocks.emplace_back(std::unique_ptr<tini2p::data::Block>(
-            new tini2p::data::RouterInfoBlock(info_)));
+        dp_msg_ = std::make_unique<data_msg_t>();
+        dp_msg_->blocks.emplace_back(
+            data::Block::pointer(new data::RouterInfoBlock(info_)));
 
         dp_->Write(*dp_msg_);
 
         boost::asio::async_write(
             sock_,
-            boost::asio::buffer(dp_msg_->buffer),
+            boost::asio::buffer(dp_msg_->buffer.data(), dp_msg_->buffer.size()),
             [this, ex](
                 const boost::system::error_code& ec,
                 std::size_t bytes_transferred) {
@@ -763,6 +786,26 @@ class Session
             });
       }
   }
+
+  state_t* state_;
+  dest_t* dest_;
+  info_t* info_;
+  key_t remote_key_, connect_key_;
+  obfse_t::iv_t aes_iv_;
+  context_t ctx_;
+  socket_t sock_;
+  endpoint_t remote_host_;
+  std::unique_ptr<request_msg_t> srq_msg_;
+  std::unique_ptr<created_msg_t> scr_msg_;
+  std::unique_ptr<confirmed_msg_t> sco_msg_;
+  std::unique_ptr<data_msg_t> dp_msg_;
+  std::unique_ptr<data_impl_t> dp_;
+  std::size_t srq_xfer_, scr_xfer_, sco_xfer_, dp_xfer_;
+  std::condition_variable cv_;
+  bool ready_;
+  std::mutex ready_mutex_;
+  std::mutex msg_mutex_;
+  std::unique_ptr<std::thread> thread_;
 };
 }  // namespace ntcp2
 }  // namespace tini2p

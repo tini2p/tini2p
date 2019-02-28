@@ -30,71 +30,64 @@
 #ifndef SRC_NTCP2_ROLE_H_
 #define SRC_NTCP2_ROLE_H_
 
+#include <noise/protocol/constants.h>
+
 namespace tini2p
 {
 namespace ntcp2
 {
-namespace noise
-{
-enum
-{
-  InitiatorRole = NOISE_ROLE_INITIATOR,
-  ResponderRole = NOISE_ROLE_RESPONDER,
-};
-}  // namespace noise
-
 class Role
 {
- protected:
-  int id_;
-
  public:
+  using id_t = int;  //< ID trait alias
+
+  enum struct Initiator
+  {
+    id = NOISE_ROLE_INITIATOR,
+  };
+
+  enum struct Responder
+  {
+    id = NOISE_ROLE_RESPONDER,
+  };
+
   Role() {}
 
   virtual ~Role() {}
 
   /// @brief Get the role ID
-  const decltype(id_)& id() const noexcept
+  const id_t& id() const noexcept
   {
     return id_;
   }
+
+ protected:
+  id_t id_;
 };
 
+/// @class Initiator
+/// @brief Wrapper for Noise initiator role
 class Initiator : public Role
 {
  public:
+  using role_t = Role::Initiator;  //< Role trait alias
+
   Initiator()
   {
-    id_ = noise::InitiatorRole;
+    id_ = static_cast<id_t>(role_t::id);
   }
 };
 
+/// @class Responder
+/// @brief Wrapper for Noise responder role
 class Responder : public Role
 {
  public:
+  using role_t = Role::Responder;  //< Role trait alias
+
   Responder()
   {
-    id_ = noise::ResponderRole;
-  }
-};
-
-/// @brief Session role during first data phase message
-class SessionInitiator : public Role
-{
- public:
-  SessionInitiator()
-  {
-    id_ = noise::ResponderRole;
-  }
-};
-
-/// @brief Session role during first data phase message
-class SessionResponder : public Role
-{
- public:
-  SessionResponder()
-  {
-    id_ = noise::InitiatorRole;
+    id_ = static_cast<id_t>(role_t::id);
   }
 };
 }  // namespace ntcp2

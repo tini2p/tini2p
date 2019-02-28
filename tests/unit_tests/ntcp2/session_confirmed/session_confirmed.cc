@@ -99,12 +99,15 @@ TEST_CASE_METHOD(
   --sco_message.data[0];  // reset
 
   // Invalidate part two
-  ++sco_message.data[meta::session_confirmed::PartOneSize];
+  ++sco_message.data[confirmed_msg_t::PartOneSize];
   REQUIRE_THROWS(sco_responder->ProcessMessage(sco_message, srq_message.options));
 }
 
-TEST_CASE("SessionConfirmed rejects null handshake state", "[sco]")
+TEST_CASE_METHOD(
+    SessionConfirmedFixture,
+    "SessionConfirmed rejects null handshake state",
+    "[sco]")
 {
-  REQUIRE_THROWS(SessionConfirmed<Initiator>(nullptr, {}));
-  REQUIRE_THROWS(SessionConfirmed<Responder>(nullptr, {}));
+  REQUIRE_THROWS(sess_init_t::confirmed_impl_t(nullptr, created_msg_t{}));
+  REQUIRE_THROWS(sess_resp_t::confirmed_impl_t(nullptr, created_msg_t{}));
 }

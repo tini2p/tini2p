@@ -38,29 +38,6 @@ namespace ntcp2
 {
 namespace session_created
 {
-enum Sizes : std::uint16_t
-{
-  OptionsSize = 16,
-  Y = tini2p::crypto::x25519::PubKeyLen,
-  CiphertextSize = OptionsSize + tini2p::crypto::hash::Poly1305Len,
-  NoisePayloadSize = Y + CiphertextSize,
-  MinSize = NoisePayloadSize,
-  MaxSize = 65535,
-  MinPaddingSize = 32,
-  MaxPaddingSize = MaxSize - NoisePayloadSize,
-};
-
-enum OptionsOffsets : std::uint8_t
-{
-  PadLengthOffset = 2,
-  TimestampOffset = 8,
-};
-
-enum MessageOffsets : std::uint8_t
-{
-  CiphertextOffset = Y,
-  PaddingOffset = NoisePayloadSize,
-};
 }  // namespace session_created
 }  // namespace ntcp2
 }  // namespace meta

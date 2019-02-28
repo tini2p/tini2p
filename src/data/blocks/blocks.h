@@ -1,20 +1,20 @@
 /* Copyright (c) 2019, tini2p
  * All rights reserved.
- * 
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
- * 
+ *
  * * Redistributions of source code must retain the above copyright notice, this
  *   list of conditions and the following disclaimer.
- * 
+ *
  * * Redistributions in binary form must reproduce the above copyright notice,
  *   this list of conditions and the following disclaimer in the documentation
  *   and/or other materials provided with the distribution.
- * 
+ *
  * * Neither the name of the copyright holder nor the names of its
  *   contributors may be used to endorse or promote products derived from
  *   this software without specific prior written permission.
- * 
+ *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
  * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -27,52 +27,14 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef SRC_CRYPTO_KEY_X25519_H_
-#define SRC_CRYPTO_KEY_X25519_H_
+#ifndef SRC_DATA_BLOCKS_BLOCKS_H_
+#define SRC_DATA_BLOCKS_BLOCKS_H_
 
-#include <cryptopp/xed25519.h>
+#include "src/data/blocks/date_time.h"
+#include "src/data/blocks/i2np.h"
+#include "src/data/blocks/options.h"
+#include "src/data/blocks/padding.h"
+#include "src/data/blocks/router_info.h"
+#include "src/data/blocks/termination.h"
 
-#include "src/exception/exception.h"
-
-#include "src/crypto/sec_bytes.h"
-
-namespace tini2p
-{
-namespace crypto
-{
-namespace x25519
-{
-enum
-{
-  PubKeyLen = 32,
-  PvtKeyLen = 32,
-};
-
-using PubKey = FixedSecBytes<std::uint8_t, PubKeyLen>;
-using PvtKey = FixedSecBytes<std::uint8_t, PvtKeyLen>;
-
-struct Keypair
-{
-  PubKey pk;
-  PvtKey sk;
-};
-
-/// @brief Create an X25519 key pair
-/// @return X25519 keypair
-inline Keypair create_keys()
-{
-  PubKey pk;
-  PvtKey sk;
-  CryptoPP::AutoSeededRandomPool rng;
-
-  CryptoPP::x25519 x25519(rng);
-  x25519.GeneratePrivateKey(rng, sk.data());
-  x25519.GeneratePublicKey(rng, sk.data(), pk.data());
-
-  return {pk, sk};
-}
-}  // namespace x25519
-}  // namespace crypto
-}  // namespace tini2p
-
-#endif  // SRC_CRYPTO_KEY_X25519_H_
+#endif  // SRC_DATA_BLOCKS_BLOCKS_H_

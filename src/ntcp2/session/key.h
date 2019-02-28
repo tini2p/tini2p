@@ -30,7 +30,7 @@
 #ifndef SRC_NTCP2_SESSION_KEY_H_
 #define SRC_NTCP2_SESSION_KEY_H_
 
-#include "src/crypto/key/x25519.h"
+#include "src/crypto/x25519.h"
 
 namespace tini2p
 {
@@ -40,7 +40,7 @@ namespace ntcp2
 /// @brief Storage struct for incoming session keys
 struct SessionKey
 {
-  crypto::x25519::PubKey key;
+  crypto::X25519::pubkey_t key;
 
   SessionKey() : key() {}
 

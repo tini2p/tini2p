@@ -33,6 +33,7 @@
 #include <cryptopp/siphash.h>
 
 #include "src/crypto/rand.h"
+#include "src/crypto/sec_bytes.h"
 
 namespace tini2p
 {
@@ -49,13 +50,13 @@ enum
 };
 
 /// @alias SipHash digest alias for correctness, clarity, and usability
-using SipHashDigest = std::array<std::uint8_t, SipHashLen>;
+using SipHashDigest = FixedSecBytes<SipHashLen>;
 
 /// @alias SipHash key part alias for correctness, clarity, and usability
-using SipHashKeyPart = std::array<std::uint8_t, SipHashKeyPartLen>;
+using SipHashKeyPart = FixedSecBytes<SipHashKeyPartLen>;
 
 /// @alias SipHash IV alias for correctness, clarity, and usability
-using SipHashIV = std::array<std::uint8_t, SipHashIVLen>;
+using SipHashIV = FixedSecBytes<SipHashIVLen>;
 
 /// @brief Calculate a SipHash digest using key parts from DataPhase KDF
 /// @param key_pt1 Part one key from DataPhase KDF

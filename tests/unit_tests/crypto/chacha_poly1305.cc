@@ -1,21 +1,20 @@
-/* Copyright (c) 2013-2018, The Kovri I2P Router Project                                      //
- * Copyright (c) 2019, tini2p
+/* Copyright (c) 2019, tini2p
  * All rights reserved.
- * 
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
- * 
+ *
  * * Redistributions of source code must retain the above copyright notice, this
  *   list of conditions and the following disclaimer.
- * 
+ *
  * * Redistributions in binary form must reproduce the above copyright notice,
  *   this list of conditions and the following disclaimer in the documentation
  *   and/or other materials provided with the distribution.
- * 
+ *
  * * Neither the name of the copyright holder nor the names of its
  *   contributors may be used to endorse or promote products derived from
  *   this software without specific prior written permission.
- * 
+ *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
  * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -28,51 +27,25 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef SRC_CRYPTO_KEY_ED25519_H_
-#define SRC_CRYPTO_KEY_ED25519_H_
+#include <catch2/catch.hpp>
 
-#include <cryptopp/naclite.h>
+#include "src/crypto/rand.h"
 
-#include "src/exception/exception.h"
+#include "src/crypto/chacha_poly1305.h"
 
-#include "src/crypto/sec_bytes.h"
+using chacha = tini2p::crypto::ChaChaPoly1305;
 
-namespace tini2p
+TEST_CASE("ChaChaPoly1305 encrypts and decrypts a message", "[chacha]")
 {
-namespace crypto
-{
-namespace ed25519
-{
-enum
-{
-  PubKeyLen = 32,
-  PvtKeyLen = 64,
-};
+  chacha::key_t key{};
+  chacha::nonce_t nonce;
 
-using PubKey = FixedSecBytes<std::uint8_t, PubKeyLen>;
-using PvtKey = FixedSecBytes<std::uint8_t, PvtKeyLen>;
+  tini2p::crypto::SecBytes message(20), ciphertext{}, ad(32);
 
-struct Keypair
-{
-  PubKey pk;
-  PvtKey sk;
-};
+  tini2p::crypto::RandBytes(key);
+  tini2p::crypto::RandBytes(message);
+  tini2p::crypto::RandBytes(ad);
 
-/// @brief Create an Ed25519 key pair
-/// @detail From Kovri Project
-inline Keypair create_keys()
-{
-  PubKey pk;
-  PvtKey sk;
-
-  if (CryptoPP::NaCl::crypto_sign_keypair(pk.data(), sk.data()))
-    exception::Exception{"Crypto", __func__}
-        .throw_ex<std::runtime_error>("could not create ed25519 keypair");
-
-  return {pk, sk};
+  REQUIRE_NOTHROW(chacha::AEADEncrypt(key, nonce, message, ad, ciphertext));
+  REQUIRE_NOTHROW(chacha::AEADDecrypt(key, nonce, message, ad, ciphertext));
 }
-}  // namespace ed25519
-}  // namespace crypto
-}  // namespace tini2p
-
-#endif  // SRC_CRYPTO_KEY_ED25519_H_

@@ -45,10 +45,10 @@ struct SessionFixture
   SessionFixture()
       : host(
             boost::asio::ip::tcp::v4(),
-            crypto::RandInRange<std::uint16_t>(9111, 10135)),
+            static_cast<std::uint16_t>(crypto::RandInRange(9111, 10135))),
         host_v6(
             boost::asio::ip::tcp::v6(),
-            crypto::RandInRange<std::uint16_t>(9111, 10135)),
+            static_cast<std::uint16_t>(crypto::RandInRange(9111, 10135))),
         dest(new tini2p::data::Info(
             std::make_unique<tini2p::data::Identity>(),
             std::vector<tini2p::data::Address>{
@@ -65,7 +65,7 @@ struct SessionFixture
     msg.blocks.emplace_back(BlockPtr(new tini2p::data::PaddingBlock(3)));
 
     // give session listeners time to start before sending requests
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
 
   ~SessionFixture()
@@ -79,58 +79,21 @@ struct SessionFixture
 
   void InitializeSession(const meta::IP_t proto)
   {
-    REQUIRE_NOTHROW(pair.init.Start(proto));
-    REQUIRE_NOTHROW(pair.init.Wait());
-    REQUIRE(pair.init.ready());
-
-    Session<SessionResponder>* remote;
-    REQUIRE_NOTHROW(
-        pair.resp = manager.listener(proto)->session(info->noise_keys().pk));
-
-    return remote;
-  }
-
-  /// @brief Initialize a mock IPv6 NTCP2 session
-  decltype(auto) InitializeSessionV6()
-  {
-    REQUIRE_NOTHROW(init.Start());
+    REQUIRE_NOTHROW(init.Start(proto));
     REQUIRE_NOTHROW(init.Wait());
     REQUIRE(init.ready());
 
-    Session<SessionResponder>* remote;
     REQUIRE_NOTHROW(
-        remote =
-            manager.listener(meta::IP_t::v6)->session(info->noise_keys().pk));
-
-    REQUIRE(remote);
-    REQUIRE_NOTHROW(remote->Wait());
-    REQUIRE(remote->ready());
-
-    return remote;
+        remote = manager.listener(proto)->session(info->id_keys().pubkey));
   }
 
   boost::asio::ip::tcp::endpoint host, host_v6;
   std::unique_ptr<tini2p::data::Info> dest, info;
-  Session<SessionInitiator> init;
+  Session<Initiator> init;
+  Session<Responder>* remote;
   SessionManager manager;
   DataPhaseMessage msg;
 };
-
-TEST_CASE_METHOD(
-    SessionFixture,
-    "IPv4 Session creates a connection to a destination",
-    "[session]")
-{
-  REQUIRE(InitializeSession());
-}
-
-TEST_CASE_METHOD(
-    SessionFixture,
-    "IPv6 Session creates a connection to a destination",
-    "[session]")
-{
-  REQUIRE(InitializeSessionV6());
-}
 
 TEST_CASE_METHOD(
     SessionFixture,
@@ -138,6 +101,8 @@ TEST_CASE_METHOD(
     "[session]")
 {
   InitializeSession(meta::IP_t::v4);
+
+  REQUIRE(remote);
 
   REQUIRE_NOTHROW(init.Write(msg));
   REQUIRE_NOTHROW(remote->Read(msg));
@@ -154,9 +119,9 @@ TEST_CASE_METHOD(
   InitializeSession(meta::IP_t::v6);
 
   REQUIRE_NOTHROW(init.Write(msg));
-  REQUIRE_NOTHROW(remote_v6->Read(msg));
+  REQUIRE_NOTHROW(remote->Read(msg));
 
-  REQUIRE_NOTHROW(remote_v6->Write(msg));
+  REQUIRE_NOTHROW(remote->Write(msg));
   REQUIRE_NOTHROW(init.Read(msg));
 }
 
@@ -168,12 +133,12 @@ TEST_CASE_METHOD(
   auto* mgr_init = manager.session(dest.get());
 
   REQUIRE(mgr_init);
-  REQUIRE_NOTHROW(mgr_init->Start());
+  REQUIRE_NOTHROW(mgr_init->Start(meta::IP_t::v6));
   REQUIRE_NOTHROW(mgr_init->Wait());
   REQUIRE(mgr_init->ready());
 
   auto* remote_v6 =
-      manager.listener(meta::IP_t::v6)->session(dest->noise_keys().pk);
+      manager.listener(meta::IP_t::v6)->session(dest->id_keys().pubkey);
 
   REQUIRE(remote_v6);
   REQUIRE_NOTHROW(remote_v6->Wait());
@@ -208,7 +173,7 @@ TEST_CASE_METHOD(
   REQUIRE_THROWS(init.Read(msg));
 
   boost::asio::io_context ctx;
-  Session<SessionResponder> resp(
+  Session<Responder> resp(
       dest.get(),
       boost::asio::ip::tcp::socket(ctx, boost::asio::ip::tcp::v6()));
 
@@ -230,7 +195,7 @@ TEST_CASE_METHOD(
     "SessionManager rejects new connection for already existing session",
     "[session]")
 {
-  Session<SessionInitiator> s0(dest.get(), info.get()), s1(dest.get(), info.get());
+  Session<Initiator> s0(dest.get(), info.get()), s1(dest.get(), info.get());
 
   REQUIRE_NOTHROW(s0.Start(meta::IP_t::v6));
   std::this_thread::sleep_for(std::chrono::milliseconds(50));

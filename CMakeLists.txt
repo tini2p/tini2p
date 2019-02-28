@@ -76,6 +76,19 @@ endif()
 target_link_libraries(tini2p-priv INTERFACE CryptoPP::CryptoPP)
 target_compile_definitions(tini2p-priv INTERFACE WITH_CRYPTOPP)
 
+# Find libSodium crypto library
+find_package(sodium REQUIRED)
+if(NOT ${sodium_FOUND})
+  message(FATAL_ERROR "Could not find libSodium. See building instructions.")
+endif()
+
+target_include_directories(tini2p-priv INTERFACE ${sodium_INCLUDE_DIR})
+if(${CMAKE_BUILD_TYPE} EQUAL Debug)
+  target_link_libraries(tini2p-priv INTERFACE ${sodium_LIBRARY_DEBUG})
+else()
+  target_link_libraries(tini2p-priv INTERFACE ${sodium_LIBRARY_RELEASE})
+endif()
+
 find_package(Threads)
 target_link_libraries(tini2p-priv INTERFACE ${CMAKE_THREAD_LIBS_INIT})
 

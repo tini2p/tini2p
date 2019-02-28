@@ -35,18 +35,18 @@
 
 namespace meta = tini2p::meta::router::info;
 
+using tini2p::data::Info;
+
 struct RouterInfoFixture
 {
   RouterInfoFixture() : info() {}
 
-  tini2p::data::Info info;
+  Info info;
 };
 
 TEST_CASE_METHOD(RouterInfoFixture, "RouterInfo has valid router identity", "[ri]")
 {
-  namespace identity = tini2p::meta::router::identity;
-
-  REQUIRE(info.identity().size() == identity::DefaultSize);
+  REQUIRE(info.identity().size() == Info::identity_t::DefaultSize);
 }
 
 TEST_CASE_METHOD(RouterInfoFixture, "RouterInfo has valid date", "[ri]")
@@ -75,8 +75,8 @@ TEST_CASE_METHOD(RouterInfoFixture, "RouterInfo has valid signature", "[ri]")
 {
   const auto& sig = info.signature();
 
-  REQUIRE(sig.size() == info.identity().signing()->sig_len());
-  REQUIRE(info.identity().signing()->Verify(
+  REQUIRE(sig.size() == info.identity().signing().sig_len());
+  REQUIRE(info.identity().signing().Verify(
       info.buffer().data(), info.size() - sig.size(), sig));
 }
 
@@ -106,10 +106,9 @@ TEST_CASE_METHOD(
     "RouterInfo can sign a message with its router identity",
     "[ri]")
 {
-  tini2p::crypto::ed25519::Signature sig;
+  Info::signature_t sig;
+  Info::identity_t::signing_t::message_t msg(19);
+  tini2p::crypto::RandBytes(msg);
 
-  std::array<std::uint8_t, 19> msg;
-  tini2p::crypto::RandBytes(msg.data(), msg.size());
-
-  REQUIRE_NOTHROW(info.identity().signing()->Sign(msg.data(), msg.size(), sig));
+  REQUIRE_NOTHROW(info.identity().signing().Sign(msg.data(), msg.size(), sig));
 }

@@ -30,19 +30,32 @@
 #ifndef SRC_CRYPTO_POLY1305_H_
 #define SRC_CRYPTO_POLY1305_H_
 
+#include "src/crypto/sec_bytes.h"
+
 namespace tini2p
 {
 namespace crypto
 {
-namespace hash
+struct Poly1305
 {
 enum
 {
-  Poly1305Len = 16,
+  DigestLen = 16,
 };
 
-using Poly1305MAC = std::array<std::uint8_t, Poly1305Len>;
-}  // namespace hash
+using digest_t = FixedSecBytes<DigestLen>;  //< MAC trait alias
+
+inline static void Hash(digest_t& digest, const std::uint8_t* data, std::size_t size)
+{
+  exception::Exception{"Poly1305", __func__}.throw_ex<std::runtime_error>("unimplemented.");
+};
+
+template <class Buffer>
+inline static void Hash(digest_t& digest, const Buffer& buffer)
+{
+  exception::Exception{"Poly1305", __func__}.throw_ex<std::runtime_error>("unimplemented.");
+};
+};
 }  // namespace crypto
 }  // namespace tini2p
 

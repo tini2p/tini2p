@@ -34,7 +34,7 @@
 
 #include "src/exception/exception.h"
 
-#include "src/crypto/meta.h"
+#include "src/crypto/x25519.h"
 
 #include "src/ntcp2/noise.h"
 #include "src/ntcp2/meta.h"
@@ -59,21 +59,21 @@ class SessionRequestKDF
   /// @brief Set the responder's remote public key
   /// @param key Remote public key
   /// @detail Validates the public key internally
-  void set_remote_key(const crypto::x25519::PubKey& key)
+  void set_remote_key(const crypto::X25519::pubkey_t& key)
   {
     noise::set_remote_public_key(state_, key, {"SessionRequestKDF", __func__});
   }
 
   /// @brief Get the local static public key
   /// @param key Key to store the local static public key
-  void get_local_public_key(crypto::x25519::PubKey& key) const
+  void get_local_public_key(crypto::X25519::pubkey_t& key) const
   {
     noise::get_local_public_key(state_, key, {"SessionRequestKDF", __func__});
   }
 
   /// @brief Set the local static keys
   /// @param keys Keypair to set
-  void set_local_keys(const crypto::x25519::Keypair& keys)
+  void set_local_keys(const crypto::X25519::keypair_t& keys)
   {
     noise::set_local_keypair(state_, keys, {"SessionRequestKDF", __func__});
   }
@@ -86,15 +86,15 @@ class SessionRequestKDF
 
   /// @brief Convenience function to derive keys for this session request
   /// @param key Remote static key used for Diffie-Hellman
-  void derive_keys(const crypto::x25519::PubKey& key)
+  void Derive(const crypto::X25519::pubkey_t& key)
   {
     set_remote_key(key);
-    derive_keys();
+    Derive();
   }
 
   /// @brief Performs final steps in key derivation
   /// @detail On success, handshake state is ready to write the first message
-  void derive_keys()
+  void Derive()
   {
     if (const int err = noise_handshakestate_start(state_))
       exception::Exception{"SessionRequestKDF", __func__}

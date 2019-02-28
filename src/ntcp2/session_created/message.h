@@ -27,13 +27,16 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+/// INFO: Separated to avoid forward-declaration of SessionCreatedMessage for SessionCreatedConfirmedKDF
+
 #ifndef SRC_NTCP2_SESSION_CREATED_MESSAGE_H_
 #define SRC_NTCP2_SESSION_CREATED_MESSAGE_H_
 
-#include "src/ntcp2/session_created/meta.h"
-#include "src/ntcp2/session_created/options.h"
+#include "src/time.h"
 
-/// INFO: Separated to avoid forward-declaration of SessionCreatedMessage for SessionCreatedConfirmedKDF
+#include "src/crypto/poly1305.h"
+#include "src/crypto/sec_bytes.h"
+#include "src/crypto/x25519.h"
 
 namespace tini2p
 {
@@ -43,14 +46,104 @@ namespace ntcp2
 /// @brief Container for session created message
 struct SessionCreatedMessage
 {
-  std::vector<std::uint8_t> data, padding;
-  SessionCreatedOptions options;
-  crypto::
-      FixedSecBytes<std::uint8_t, meta::ntcp2::session_created::CiphertextSize>
-          ciphertext;
+  enum : std::uint16_t
+  {
+    OptionsSize = 16,
+    YSize = crypto::X25519::PublicKeyLen,
+    CiphertextSize = OptionsSize + crypto::Poly1305::DigestLen,
+    NoisePayloadSize = YSize + CiphertextSize,
+    MinSize = NoisePayloadSize,
+    MaxSize = 65535,
+    MinPaddingSize = 32,
+    MaxPaddingSize = MaxSize - NoisePayloadSize,
+  };
+
+  enum : std::uint8_t
+  {
+    PadLengthOffset = 2,
+    TimestampOffset = 8,
+    CiphertextOffset = YSize,
+    PaddingOffset = NoisePayloadSize,
+  };
+
+  /// @brief Container for session request options
+  class Options
+  {
+   public:
+    using buffer_t = crypto::FixedSecBytes<OptionsSize>;
+    using padlen_t = boost::endian::big_uint16_t;
+    using timestamp_t = boost::endian::big_uint32_t;
+
+    padlen_t pad_len;
+    timestamp_t timestamp;
+    buffer_t buffer;
+
+    Options()
+        : pad_len(crypto::RandInRange(MinPaddingSize, MaxPaddingSize)),
+          timestamp(tini2p::time::now_s())
+    {
+      serialize();
+    }
+
+    Options(const std::uint16_t pad_len)
+        : pad_len(pad_len), timestamp(tini2p::time::now_s())
+    {
+      serialize();
+    }
+
+    /// @brief Updates session created options
+    /// @param pad_len Padding length for the session request
+    /// @detail As initiator, must call before calling ProcessMessage
+    void update(const padlen_t pad_size)
+    {
+      pad_len = pad_size;
+      timestamp = tini2p::time::now_s();
+      serialize();
+    }
+
+    /// @brief Write request options to buffer
+    void serialize()
+    {
+      check_params({"SessionRequest", __func__});
+
+      tini2p::BytesWriter<buffer_t> writer(buffer);
+      writer.write_bytes(pad_len);
+      writer.write_bytes(timestamp);
+    }
+
+    /// @brief Read request options from buffer
+    void deserialize()
+    {
+      tini2p::BytesReader<buffer_t> reader(buffer);
+      reader.read_bytes(pad_len);
+      reader.read_bytes(timestamp);
+
+      check_params({"SessionRequest", __func__});
+    }
+
+   private:
+    void check_params(const exception::Exception& ex)
+    {
+      if (pad_len > MaxPaddingSize)
+        ex.throw_ex<std::length_error>("invalid padding size.");
+
+      if (!time::check_lag_s(timestamp))
+        ex.throw_ex<std::runtime_error>("invalid timestamp.");
+    }
+  };
+
+  using data_t = crypto::SecBytes;  //< Data trait alias
+  using padding_t = crypto::SecBytes;  //< Data trait alias
+  using options_t = Options;  //< Options trait alias
+  using ciphertext_t = crypto::FixedSecBytes<CiphertextSize>;  //< Ciphertext trait alias
+
+  data_t data;
+  padding_t padding;
+  options_t options;
+  ciphertext_t ciphertext;
 
   /// @brief Create a session created message w/ minimum length
-  SessionCreatedMessage() : data(meta::ntcp2::session_created::MinSize), options()
+  SessionCreatedMessage() : data(MinSize), options()
   {
     if (options.pad_len)
       {

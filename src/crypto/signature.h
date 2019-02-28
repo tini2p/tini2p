@@ -27,47 +27,74 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef SRC_CRYPTO_KEY_AES_H_
-#define SRC_CRYPTO_KEY_AES_H_
-
-#include "src/crypto/rand.h"
-#include "src/crypto/sec_bytes.h"
+#ifndef SRC_CRYPTO_SIGNATURE_H_
+#define SRC_CRYPTO_SIGNATURE_H_
 
 namespace tini2p
 {
 namespace crypto
 {
-namespace aes
+/// @brief Base class for signatures
+/// @detail Protected ctors to ensure derived instantiation
+/// @tparam N Size of the signature
+template <std::size_t N>
+class Signature
 {
-enum
-{
-  KeyLen = 32,
-  IVLen = 16,
+ public:
+  using buffer_t = FixedSecBytes<N>;  //< Buffer trait alias
+  using const_pointer = typename buffer_t::const_pointer;
+  using pointer = typename buffer_t::pointer;
+  using const_iterator = typename buffer_t::const_iterator;
+  using iterator = typename buffer_t::iterator;
+  using size_type = typename buffer_t::size_type;
+
+  Signature() : buf_() {}
+
+  Signature(buffer_t buf) : buf_(std::forward<buffer_t>(buf)) {}
+
+  Signature(const SecBytes& buf) : buf_(buf) {}
+
+  Signature(std::initializer_list<std::uint8_t> list) : buf_(list) {}
+
+  decltype(auto) data() const noexcept
+  {
+    return buf_.data();
+  }
+
+  decltype(auto) data() noexcept
+  {
+    return buf_.data();
+  }
+
+  decltype(auto) begin() const noexcept
+  {
+    return buf_.begin();
+  }
+
+  decltype(auto) begin() noexcept
+  {
+    return buf_.begin();
+  }
+
+  decltype(auto) end() const noexcept
+  {
+    return buf_.end();
+  }
+
+  decltype(auto) end() noexcept
+  {
+    return buf_.end();
+  }
+
+  decltype(auto) size() const noexcept
+  {
+    return buf_.size();
+  }
+
+ protected:
+  buffer_t buf_;
 };
-
-using Key = FixedSecBytes<std::uint8_t, KeyLen>;
-using IV = FixedSecBytes<std::uint8_t, IVLen>;
-
-struct KeyIV
-{
-  Key key;
-  IV iv;
-};
-
-/// @brief Create an AES key and IV 
-/// @return AES key and IV
-inline KeyIV create_key_iv()
-{
-  Key key;
-  IV iv;
-
-  RandBytes(key.data(), key.size());
-  RandBytes(iv.data(), iv.size());
-
-  return {key, iv};
-}
-}  // namespace aes
 }  // namespace crypto
 }  // namespace tini2p
 
-#endif  // SRC_CRYPTO_KEY_AES_H_
+#endif  // SRC_CRYPTO_SIGNATURE_H_
