@@ -54,7 +54,7 @@ class RouterInfoBlock : public Block
   RouterInfoBlock()
       : Block(
             meta::block::RouterInfoID,
-            meta::block::FloodFlagSize + meta::router::info::DefaultSize),
+            meta::block::FloodFlagSize + data::Info::DefaultLen),
         flag_(meta::block::FloodFlag),
         info_(nullptr)
   {

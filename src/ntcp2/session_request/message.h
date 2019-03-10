@@ -41,7 +41,7 @@
 #include "src/crypto/sha.h"
 #include "src/crypto/x25519.h"
 
-#include "src/data/router/meta/info.h"
+#include "src/data/router/info.h"
 
 #include "src/ntcp2/meta.h"
 
@@ -69,8 +69,8 @@ struct SessionRequestMessage
     NoisePayloadSize = XSize + CiphertextSize,
     MinSize = NoisePayloadSize,
     MaxSize = 65535,
-    MinMsg3Pt2Size = tini2p::meta::router::info::MinSize
-                     + crypto::Poly1305::DigestLen,  // see spec
+    MinMsg3Pt2Size =
+        data::Info::MinLen + crypto::Poly1305::DigestLen,  // see spec
     MaxMsg3Pt2Size = 65471,  // see spec
     MinPaddingSize = 32,
     MaxPaddingSize = MaxSize - NoisePayloadSize,

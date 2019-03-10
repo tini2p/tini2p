@@ -66,17 +66,36 @@ class Info
   using iv_t = crypto::AES::iv_t;  //< IV trait alias
   using buffer_t = crypto::SecBytes;  //< Buffer trait alias
 
+  using pointer = Info*;  //< Non-owning pointer trait alias
+  using unique_ptr = std::unique_ptr<Info>;  //< Unique pointer trait alias
+  using shared_ptr = std::shared_ptr<Info>;  //< Shared pointer trait alias
+  using const_shared_ptr = std::shared_ptr<const Info>;  //< Const shared pointer trait alias
+
+  enum : std::uint16_t
+  {
+    DateLen = 8,
+    PeerLen = 0,  // always zero, see spec
+    MaxTransportLen = 256,
+    NTCP2TransportLen = 6,
+    // size of field lengths
+    PeerSizeLen = 1,
+    AddressSizeLen = 1,
+    MinLen = 440,
+    MaxLen = 65515,  // max block size - flag (1)
+    DefaultLen = 440,
+  };
+
   /// @brief Default RouterInfo ctor
   /// @detail Creates all new keys (identity + noise)
   Info()
-      : identity_(new Identity()),
+      : identity_(),
         addresses_(),
         options_(),
         transport_(ntcp2_transport.begin(), ntcp2_transport.end()),
         id_keys_(curve_t::create_keys())
   {
     crypto::RandBytes(iv_);
-    update_noise_key();
+    update_id_pubkey();
     update_iv();
     options_.add(std::string("v"), v_);
 
@@ -95,26 +114,23 @@ class Info
   /// @param ident RouterIdentity (signs/verifies RouterInfo signature, encrypts/decrypts garlic)
   /// @param addrs RouterAddress(es) for contacting this RouterInfo
   /// @param opts Router mapping of RouterInfo options
-  Info(
-      std::unique_ptr<identity_t> ident,
-      addresses_t addrs,
-      options_t opts = options_t())
-      : identity_(std::move(ident)),
+  Info(identity_t ident, addresses_t addrs, options_t opts = options_t())
+      : identity_(std::forward<identity_t>(ident)),
         date_(tini2p::time::now_ms()),
         addresses_(std::forward<addresses_t>(addrs)),
         options_(std::forward<options_t>(opts)),
         transport_(ntcp2_transport.begin(), ntcp2_transport.end()),
         id_keys_(curve_t::create_keys())
   {
-    namespace meta = tini2p::meta::router::info;
+    const exception::Exception ex{"RouterInfo", __func__};
 
     const auto total_size = size();
-    if (total_size < meta::MinSize || total_size > meta::MaxSize)
-      exception::Exception{"RouterInfo", __func__}.throw_ex<std::length_error>(
-          "invalid size.");
+
+    if (total_size < MinLen || total_size > MaxLen)
+      ex.throw_ex<std::length_error>("invalid size.");
 
     // update Noise options entries
-    update_noise_key();
+    update_id_pubkey();
     update_iv();
     options_.add(std::string("v"), v_);
 
@@ -133,10 +149,16 @@ class Info
     return ep_keys_;
   }
 
-  /// @brief Get a const pointer to the RouterIdentity
+  /// @brief Get a const reference to the RouterIdentity
   const identity_t& identity() const noexcept
   {
-    return *identity_;
+    return identity_;
+  }
+
+  /// @brief Get a non-const reference to the RouterIdentity
+  identity_t& identity() noexcept
+  {
+    return identity_;
   }
 
   /// @brief Get a const reference to the creation date
@@ -165,11 +187,12 @@ class Info
   /// @throw On invalid port
   decltype(auto) host(const bool prefer_v6 = true)
   {
+    const exception::Exception ex{"Router: Info", __func__};
+
     std::unique_lock<std::mutex> l(addresses_mutex_);
 
     if (addresses_.empty())
-      exception::Exception{"Router: Info", __func__}.throw_ex<std::logic_error>(
-          "empty router addresses.");
+      ex.throw_ex<std::logic_error>("empty router addresses.");
 
     for (const auto& address : addresses_)
       {
@@ -233,28 +256,23 @@ class Info
   /// @brief Get the total size of the RouterInfo
   std::size_t size() const
   {
-    namespace meta = tini2p::meta::router::info;
-
     std::size_t address_size = 0;
     for (const auto& address : addresses_)
       address_size += address.size();
 
-    return identity_->size() + sizeof(date_) + meta::RouterAddressSizeSize
-           + address_size + meta::PeerSizeSize + options_.size()
-           + signature_.size();
+    return identity_.size() + sizeof(date_) + AddressSizeLen + address_size
+           + PeerSizeLen + options_.size() + signature_.size();
   }
 
   /// @brief Serialize RouterInfo data members to buffer
   void serialize()
   {
-    namespace meta = tini2p::meta::router::info;
-
     buf_.resize(size());
 
     tini2p::BytesWriter<buffer_t> writer(buf_);
 
-    identity_->serialize();
-    writer.write_data(identity_->buffer());
+    identity_.serialize();
+    writer.write_data(identity_.buffer());
 
     date_ = tini2p::time::now_ms();
     writer.write_bytes(date_);
@@ -272,54 +290,39 @@ class Info
     options_.serialize();
     writer.write_data(options_.buffer());
 
-    identity_->signing().Sign(buf_.data(), writer.count(), signature_);
+    identity_.signing().Sign(buf_.data(), writer.count(), signature_);
     writer.write_data(signature_);
   }
 
   /// @brief Deserialize RouterInfo data members from buffer
   void deserialize()
   {
-    namespace meta = tini2p::meta::router::info;
-
     const tini2p::exception::Exception ex{"RouterInfo", __func__};
 
     tini2p::BytesReader<buffer_t> reader(buf_);
 
     process_identity(reader);
-
     reader.read_bytes(date_);
 
     process_addresses(reader, ex);
-
-    reader.skip_bytes(meta::PeerSizeSize);
+    reader.skip_bytes(PeerSizeLen);
 
     process_options(reader, ex);
-
     reader.read_data(signature_);
 
-    identity_->signing().Verify(
+    identity_.signing().Verify(
         buf_.data(), reader.count() - signature_.size(), signature_);
   }
 
  private:
-  template <class Reader>
-  void process_identity(Reader& reader)
+  void process_identity(tini2p::BytesReader<buffer_t>& reader)
   {
-   if (!identity_)
-     {
-       identity_ =
-           std::make_unique<identity_t>(buf_.data(), Identity::DefaultSize);
-       reader.skip_bytes(identity_->size());
-     }
-   else
-     {
-       auto& ident_buf = identity_->buffer();
-       if (ident_buf.size() < Identity::DefaultSize)
-         ident_buf.resize(Identity::DefaultSize);
+    auto& ident_buf = identity_.buffer();
+    if (ident_buf.size() < Identity::DefaultSize)
+      ident_buf.resize(Identity::DefaultSize);
 
-       reader.read_data(ident_buf);
-       identity_->deserialize();
-     }
+    reader.read_data(ident_buf);
+    identity_.deserialize();
   }
 
   template <class Reader>
@@ -348,8 +351,9 @@ class Info
       }
   }
 
-  template <class Reader>
-  void process_options(Reader& reader, const exception::Exception& ex)
+  void process_options(
+      tini2p::BytesReader<buffer_t>& reader,
+      const exception::Exception& ex)
   {
     if (!reader.gcount())
       ex.throw_ex<std::logic_error>(
@@ -377,7 +381,7 @@ class Info
       reader.skip_bytes(sizeof(opt_size));
   }
 
-  void update_noise_key()
+  void update_id_pubkey()
   {
     options_.add(
         std::string("s"),
@@ -391,7 +395,7 @@ class Info
         std::string("i"), crypto::Base64::Encode(iv_.data(), iv_.size()));
   }
 
-  std::unique_ptr<identity_t> identity_;
+  identity_t identity_;
   date_t date_;
   addresses_t addresses_;
   std::mutex addresses_mutex_;

@@ -50,7 +50,7 @@ struct SessionFixture
             boost::asio::ip::tcp::v6(),
             static_cast<std::uint16_t>(crypto::RandInRange(9111, 10135))),
         dest(new tini2p::data::Info(
-            std::make_unique<tini2p::data::Identity>(),
+            tini2p::data::Identity(),
             std::vector<tini2p::data::Address>{
                 tini2p::data::Address(host.address().to_string(), host.port()),
                 tini2p::data::Address(

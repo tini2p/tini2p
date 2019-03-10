@@ -47,7 +47,7 @@ struct SessionConfirmedMessage
 
   enum : std::uint16_t
   {
-    MinPayloadSize = tini2p::meta::router::info::MinSize + mac_t::DigestLen,
+    MinPayloadSize = data::Info::MinLen + mac_t::DigestLen,
     MaxPayloadSize = 65471,  // see spec
     MinPaddingSize = 32,
     MaxPaddingSize = MaxPayloadSize - MinPayloadSize,

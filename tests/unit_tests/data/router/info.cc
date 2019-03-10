@@ -33,8 +33,6 @@
 
 #include "src/data/router/info.h"
 
-namespace meta = tini2p::meta::router::info;
-
 using tini2p::data::Info;
 
 struct RouterInfoFixture

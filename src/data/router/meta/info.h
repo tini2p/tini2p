@@ -38,19 +38,6 @@ namespace router
 {
 namespace info
 {
-enum RouterInfoSizes : std::uint16_t
-{
-  DateSize = 8,
-  PeerSize = 0,  // always zero, see spec
-  MaxTransportSize = 256,
-  NTCP2TransportSize = 6,
-  // size of field lengths
-  PeerSizeSize = 1,
-  RouterAddressSizeSize = 1,
-  MinSize = 440,
-  MaxSize = 65515,  // max block size - flag (1)
-  DefaultSize = 440,
-};
 }  // namespace info
 }  // namespace router
 }  // namespace meta
