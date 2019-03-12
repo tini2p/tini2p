@@ -88,7 +88,7 @@ struct SessionFixture
   }
 
   boost::asio::ip::tcp::endpoint host, host_v6;
-  std::unique_ptr<tini2p::data::Info> dest, info;
+  tini2p::data::Info::shared_ptr dest, info;
   Session<Initiator> init;
   Session<Responder>* remote;
   SessionManager manager;

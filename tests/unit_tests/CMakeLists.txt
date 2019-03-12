@@ -36,9 +36,10 @@ add_executable(tini2p-tests
 
   crypto/aes.cc
   crypto/chacha_poly1305.cc
+  crypto/codecs.cc
   crypto/ecies/x25519.cc
   crypto/eddsa/eddsa_sha512.cc
-  crypto/radix.cc
+  #crypto/radix.cc
   crypto/siphash.cc
   crypto/x25519.cc
 

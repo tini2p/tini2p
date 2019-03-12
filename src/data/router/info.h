@@ -35,8 +35,8 @@
 #include "src/time.h"
 
 #include "src/crypto/aes.h"
+#include "src/crypto/codecs.h"
 #include "src/crypto/keys.h"
-#include "src/crypto/radix.h"
 #include "src/crypto/signature.h"
 #include "src/crypto/x25519.h"
 
@@ -301,13 +301,13 @@ class Info
 
     tini2p::BytesReader<buffer_t> reader(buf_);
 
-    process_identity(reader);
+    ProcessIdentity(reader);
     reader.read_bytes(date_);
 
-    process_addresses(reader, ex);
+    ProcessAddresses(reader, ex);
     reader.skip_bytes(PeerSizeLen);
 
-    process_options(reader, ex);
+    ProcessOptions(reader, ex);
     reader.read_data(signature_);
 
     identity_.signing().Verify(
@@ -315,7 +315,7 @@ class Info
   }
 
  private:
-  void process_identity(tini2p::BytesReader<buffer_t>& reader)
+  void ProcessIdentity(tini2p::BytesReader<buffer_t>& reader)
   {
     auto& ident_buf = identity_.buffer();
     if (ident_buf.size() < Identity::DefaultSize)
@@ -326,7 +326,7 @@ class Info
   }
 
   template <class Reader>
-  void process_addresses(Reader& reader, const exception::Exception& ex)
+  void ProcessAddresses(Reader& reader, const exception::Exception& ex)
   {
     std::uint8_t num_addresses;
     reader.read_bytes(num_addresses);
@@ -351,7 +351,7 @@ class Info
       }
   }
 
-  void process_options(
+  void ProcessOptions(
       tini2p::BytesReader<buffer_t>& reader,
       const exception::Exception& ex)
   {

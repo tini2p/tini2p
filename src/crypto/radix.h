@@ -135,90 +135,90 @@ class Radix : public RadixBase
 
 /// @brief Base32 implementation
 /// @details Replaces DUDE with RFC 4648 alphabet
-class Base32 final : public Radix<Base32>
-{
- public:
-  /// @brief RFC 4648 alphabet Base32 encoder
-  /// @param in Decoded data
-  /// @param len Size of decoded data
-  /// @return String of encoded data
-  static std::string Encode(const std::uint8_t* in, const std::uint64_t len)
-  {
-    // Prepare encoder
-    CryptoPP::AlgorithmParameters static const params(CryptoPP::MakeParameters(
-        CryptoPP::Name::EncodingLookupArray(),
-        reinterpret_cast<const CryptoPP::byte*>(m_Base32Alphabet.c_str())));
-
-    // Encode
-    return Radix::Encode<CryptoPP::Base32Encoder>(params, in, len);
-  }
-
-  /// @brief RFC 4648 alphabet Base32 decoder
-  /// @param in Encoded data
-  /// @param len Size of Encoded data
-  /// @return Byte vector of decoded data
-  static std::vector<std::uint8_t> Decode(
-      const char* in,
-      const std::uint64_t len)
-  {
-    // Prepare decoder
-    CryptoPP::AlgorithmParameters static const params(CryptoPP::MakeParameters(
-        CryptoPP::Name::DecodingLookupArray(), m_Base32Table.data(), false));
-
-    // Decode
-    return Radix::Decode<CryptoPP::Base32Decoder>(params, in, len);
-  }
-
-  /// @returns RFC 4648 base32 alphabet
-  static constexpr const std::string& GetAlphabet() noexcept
-  {
-    return m_Base32Alphabet;
-  }
-};
+//class Base32 final : public Radix<Base32>
+//{
+// public:
+//  /// @brief RFC 4648 alphabet Base32 encoder
+//  /// @param in Decoded data
+//  /// @param len Size of decoded data
+//  /// @return String of encoded data
+//  static std::string Encode(const std::uint8_t* in, const std::uint64_t len)
+//  {
+//    // Prepare encoder
+//    CryptoPP::AlgorithmParameters static const params(CryptoPP::MakeParameters(
+//        CryptoPP::Name::EncodingLookupArray(),
+//        reinterpret_cast<const CryptoPP::byte*>(m_Base32Alphabet.c_str())));
+//
+//    // Encode
+//    return Radix::Encode<CryptoPP::Base32Encoder>(params, in, len);
+//  }
+//
+//  /// @brief RFC 4648 alphabet Base32 decoder
+//  /// @param in Encoded data
+//  /// @param len Size of Encoded data
+//  /// @return Byte vector of decoded data
+//  static std::vector<std::uint8_t> Decode(
+//      const char* in,
+//      const std::uint64_t len)
+//  {
+//    // Prepare decoder
+//    CryptoPP::AlgorithmParameters static const params(CryptoPP::MakeParameters(
+//        CryptoPP::Name::DecodingLookupArray(), m_Base32Table.data(), false));
+//
+//    // Decode
+//    return Radix::Decode<CryptoPP::Base32Decoder>(params, in, len);
+//  }
+//
+//  /// @returns RFC 4648 base32 alphabet
+//  static constexpr const std::string& GetAlphabet() noexcept
+//  {
+//    return m_Base32Alphabet;
+//  }
+//};
 
 /// @brief Base64 implementation
 /// @details Replaces RFC 4648 with I2P-defined alphabet
-class Base64 final : public Radix<Base64>
-{
- public:
-  /// @brief I2P alphabet Base64 encoder
-  /// @param in Decoded data
-  /// @param len Size of decoded data
-  /// @return String of encoded data
-  static std::string Encode(const std::uint8_t* in, const std::uint64_t len)
-  {
-    // Prepare encoder
-    CryptoPP::AlgorithmParameters static const params(
-        CryptoPP::MakeParameters(CryptoPP::Name::InsertLineBreaks(), false)(
-            CryptoPP::Name::EncodingLookupArray(),
-            reinterpret_cast<const CryptoPP::byte*>(m_Base64Alphabet.c_str())));
-
-    // Encode
-    return Radix::Encode<CryptoPP::Base64Encoder>(params, in, len);
-  }
-
-  /// @brief I2P alphabet Base64 decoder
-  /// @param in Encoded data
-  /// @param len Size of Encoded data
-  /// @return Byte vector of decoded data
-  static std::vector<std::uint8_t> Decode(
-      const char* in,
-      const std::uint64_t len)
-  {
-    // Prepare decoder
-    CryptoPP::AlgorithmParameters static const params(CryptoPP::MakeParameters(
-        CryptoPP::Name::DecodingLookupArray(), m_Base64Table.data(), false));
-
-    // Decode
-    return Radix::Decode<CryptoPP::Base64Decoder>(params, in, len);
-  }
-
-  /// @brief I2P base64 alphabet
-  static constexpr const std::string& GetAlphabet() noexcept
-  {
-    return m_Base64Alphabet;
-  }
-};
+//class Base64 final : public Radix<Base64>
+//{
+// public:
+//  /// @brief I2P alphabet Base64 encoder
+//  /// @param in Decoded data
+//  /// @param len Size of decoded data
+//  /// @return String of encoded data
+//  static std::string Encode(const std::uint8_t* in, const std::uint64_t len)
+//  {
+//    // Prepare encoder
+//    CryptoPP::AlgorithmParameters static const params(
+//        CryptoPP::MakeParameters(CryptoPP::Name::InsertLineBreaks(), false)(
+//            CryptoPP::Name::EncodingLookupArray(),
+//            reinterpret_cast<const CryptoPP::byte*>(m_Base64Alphabet.c_str())));
+//
+//    // Encode
+//    return Radix::Encode<CryptoPP::Base64Encoder>(params, in, len);
+//  }
+//
+//  /// @brief I2P alphabet Base64 decoder
+//  /// @param in Encoded data
+//  /// @param len Size of Encoded data
+//  /// @return Byte vector of decoded data
+//  static std::vector<std::uint8_t> Decode(
+//      const char* in,
+//      const std::uint64_t len)
+//  {
+//    // Prepare decoder
+//    CryptoPP::AlgorithmParameters static const params(CryptoPP::MakeParameters(
+//        CryptoPP::Name::DecodingLookupArray(), m_Base64Table.data(), false));
+//
+//    // Decode
+//    return Radix::Decode<CryptoPP::Base64Decoder>(params, in, len);
+//  }
+//
+//  /// @brief I2P base64 alphabet
+//  static constexpr const std::string& GetAlphabet() noexcept
+//  {
+//    return m_Base64Alphabet;
+//  }
+//};
 
 /// @brief Base32 RFC 4648 alphabet
 template <typename T>
