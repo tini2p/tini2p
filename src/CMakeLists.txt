@@ -48,11 +48,7 @@ add_library(tini2p-core
   crypto/dh/x3dh.h
 
   # Blocks
-  data/blocks/block.h
-  data/blocks/date_time.h
-  data/blocks/meta.h
-  data/blocks/options.h
-  data/blocks/router_info.h
+  data/blocks/blocks.h
 
   # Router
   data/router/address.h

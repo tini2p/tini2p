@@ -159,6 +159,13 @@ class Bytes
     advance(size, {"Bytes", __func__});
   }
 
+  /// @brief Skip past `size` bytes
+  /// @param size Number of bytes to skip
+  void skip_back(const std::size_t size)
+  {
+    regress(size, {"Bytes", __func__});
+  }
+
   /// @brief Reset to beginning of the buffer
   void reset()
   {
@@ -190,6 +197,24 @@ class Bytes
           ex.throw_ex<std::length_error>("position overflows buffer.");
 
         pos_ += size;
+      }
+  }
+
+  void regress(const std::size_t size, const exception::Exception& ex)
+  {
+    if (const_)
+      {
+        if (cpos_ - size < cbegin_)
+          ex.throw_ex<std::length_error>("position overflows buffer.");
+
+        cpos_ -= size;
+      }
+    else
+      {
+        if (pos_ - size > begin_)
+          ex.throw_ex<std::length_error>("position overflows buffer.");
+
+        pos_ -= size;
       }
   }
 };

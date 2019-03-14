@@ -31,8 +31,6 @@
 
 #include "src/data/blocks/termination.h"
 
-namespace meta = tini2p::meta::block;
-
 using tini2p::data::TerminationBlock;
 
 struct TerminationBlockFixture
@@ -45,14 +43,14 @@ TEST_CASE_METHOD(
     "TerminationBlock has a block ID",
     "[block]")
 {
-  REQUIRE(block.type() == meta::TerminationID);
+  REQUIRE(block.type() == TerminationBlock::type_t::Termination);
 }
 
 TEST_CASE_METHOD(TerminationBlockFixture, "TerminationBlock has a size", "[block]")
 {
-  REQUIRE(block.data_size() >= meta::MinTermSize);
-  REQUIRE(block.data_size() <= meta::MaxTermSize);
-  REQUIRE(block.size() == meta::HeaderSize + block.data_size());
+  REQUIRE(block.data_size() >= TerminationBlock::MinTermLen);
+  REQUIRE(block.data_size() <= TerminationBlock::MaxTermLen);
+  REQUIRE(block.size() == TerminationBlock::HeaderLen + block.data_size());
   REQUIRE(block.size() == block.buffer().size());
 }
 
@@ -71,9 +69,9 @@ TEST_CASE_METHOD(
   // deserialize from buffer
   REQUIRE_NOTHROW(block.deserialize());
 
-  REQUIRE(block.type() == meta::TerminationID);
-  REQUIRE(block.size() == meta::HeaderSize + block.data_size());
-  REQUIRE(block.reason() == meta::NormalClose);
+  REQUIRE(block.type() == TerminationBlock::type_t::Termination);
+  REQUIRE(block.size() == TerminationBlock::HeaderLen + block.data_size());
+  REQUIRE(block.reason() == TerminationBlock::reason_t::NormalClose);
   REQUIRE(block.buffer().size() == block.size());
 }
 
@@ -86,10 +84,10 @@ TEST_CASE_METHOD(
   REQUIRE_NOTHROW(block.serialize());
 
   // invalidate the block ID
-  ++block.buffer()[meta::TypeOffset];
+  ++block.buffer()[TerminationBlock::TypeOffset];
   REQUIRE_THROWS(block.deserialize());
 
-  block.buffer()[meta::TypeOffset] -= 2;
+  block.buffer()[TerminationBlock::TypeOffset] -= 2;
   REQUIRE_THROWS(block.deserialize());
 }
 
@@ -105,10 +103,10 @@ TEST_CASE_METHOD(
 
   // invalidate the size
   tini2p::write_bytes(
-      &block.buffer()[meta::SizeOffset], big_uint16_t(meta::MinTermSize - 1));
+      &block.buffer()[TerminationBlock::SizeOffset], big_uint16_t(TerminationBlock::MinTermLen - 1));
   REQUIRE_THROWS(block.deserialize());
 
   tini2p::write_bytes(
-      &block.buffer()[meta::SizeOffset], big_uint16_t(meta::MaxTermSize + 1));
+      &block.buffer()[TerminationBlock::SizeOffset], big_uint16_t(TerminationBlock::MaxTermLen + 1));
   REQUIRE_THROWS(block.deserialize());
 }

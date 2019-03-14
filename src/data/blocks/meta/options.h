@@ -36,25 +36,6 @@ namespace meta
 {
 namespace block
 {
-enum OptionsSizes : std::uint8_t
-{
-  OptionsSize = 12,
-};
-
-enum OptionsOffsets : std::uint8_t
-{
-  TMinOffset = 3,
-  TMaxOffset,
-  RMinOffset,
-  RMaxOffset,
-  TDummyOffset,
-  RDummyOffset = 9,
-  TDelayOffset = 11,
-  RDelayOffset = 13
-};
-
-constexpr static float CastRatio = 16.0, MinPaddingRatio = 0,
-                       MaxPaddingRatio = 15.9375;
 }  // namespace block
 }  // namespace meta
 }  // namespace tini2p

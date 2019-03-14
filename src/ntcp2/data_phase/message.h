@@ -47,8 +47,8 @@ class DataPhaseMessage
   enum
   {
     SizeLen = 2,
-    MinSize = SizeLen,
-    MaxSize = 65535 + MinSize
+    MinLen = SizeLen,
+    MaxLen = 65535 + MinLen
   };
 
   /// @brief Direction of communication
@@ -59,25 +59,16 @@ class DataPhaseMessage
   };
 
   using buffer_t = crypto::SecBytes;  //< Buffer trait alias
-  using blocks_t = std::vector<data::Block::pointer>;  //< Blocks trait alias
+  using blocks_t = data::Blocks::data_blocks_t;  //< Blocks trait alias
 
-  blocks_t blocks;
-  buffer_t buffer;
-
-  std::size_t size() const
+  constexpr std::size_t size() const
   {
-    std::size_t size(0);
-    for (const auto& block : blocks)
-      size += block->size();
-
-    return size;
+    return data::Blocks::TotalSize(blocks_);
   }
 
   /// @brief Serialize message blocks to buffer
   void serialize()
   {
-    namespace block_m = tini2p::meta::block;
-
     const exception::Exception ex{"DataPhase: Message", __func__};
 
     std::lock_guard<std::mutex> buf_mtx(buffer_mutex_);
@@ -85,108 +76,123 @@ class DataPhaseMessage
 
     const auto total_size = size();
 
-    if (total_size > MaxSize)
+    if (total_size > MaxLen)
       ex.throw_ex<std::length_error>("invalid total message size.");
 
-    if (buffer.size() < total_size)
-      buffer.resize(total_size);
+    if (buffer_.size() < SizeLen + total_size)
+      buffer_.resize(SizeLen + total_size);
 
-    tini2p::BytesWriter<buffer_t> writer(buffer);
-    writer.skip_bytes(SizeLen);
+    tini2p::BytesWriter<buffer_t> writer(buffer_);
+    writer.skip_bytes(SizeLen);  // obfs len written elsewhere
 
-    bool last_block(false), term_block(false);
-    for (const auto& block : blocks)
-      {
-        if (last_block)
-          ex.throw_ex<std::logic_error>("padding must be the last block.");
+    data::Blocks::CheckBlockOrder(blocks_, ex);
 
-        if (term_block && block->type() != block_m::PaddingID)
-          ex.throw_ex<std::logic_error>(
-              "termination followed by non-padding block.");
-
-        if (block->type() == block_m::PaddingID)
-          last_block = true;
-
-        if (block->type() == block_m::TerminationID)
-          term_block = true;
-
-        block->serialize();
-        writer.write_data(block->buffer());
-      }
+    for (auto& block : blocks_)
+        data::Blocks::WriteToBuffer(writer, block, ex);
   }
 
   /// @brief Deserialize blocks from buffer
   void deserialize()
   {
-    namespace block_m = tini2p::meta::block;
-
     const exception::Exception ex{"DataPhase", __func__};
 
     std::lock_guard<std::mutex> buf_mtx(buffer_mutex_);
-    tini2p::BytesReader<buffer_t> reader(buffer);
-    reader.skip_bytes(block_m::SizeSize);
 
-    bool last_block(false);
+    tini2p::BytesReader<buffer_t> reader(buffer_);
+    reader.skip_bytes(SizeLen);
+
     blocks_t n_blocks;
     while (reader.gcount() > crypto::Poly1305::DigestLen)
       {
-        std::uint8_t type;
-        tini2p::read_bytes(&buffer[reader.count()], type);
-
-        boost::endian::big_uint16_t size;
-        tini2p::read_bytes(&buffer[reader.count() + block_m::SizeOffset], size);
-
-        const auto b = buffer.begin() + reader.count();
-        const auto e = b + block_m::HeaderSize + size;
-
-        // final block(s) must be: padding or termination->padding
-        //   disallows multiple padding blocks
-        if (last_block && blocks.back()->type() != block_m::TerminationID)
-          ex.throw_ex<std::logic_error>("invalid block ordering.");
-
-        if (type == block_m::DateTimeID)
-          {
-            n_blocks.emplace_back(
-                blocks_t::value_type(new data::DateTimeBlock(b, e)));
-          }
-        else if (type == block_m::I2NPMessageID)
-          {
-            n_blocks.emplace_back(
-                blocks_t::value_type(new data::I2NPBlock(b, e)));
-          }
-        else if (type == block_m::OptionsID)
-          {
-            n_blocks.emplace_back(
-                blocks_t::value_type(new data::OptionsBlock(b, e)));
-          }
-        else if (type == block_m::RouterInfoID)
-          {
-            n_blocks.emplace_back(
-                blocks_t::value_type(new data::RouterInfoBlock(b, e)));
-          }
-        else if (type == block_m::PaddingID)
-          {
-            last_block = true;
-            n_blocks.emplace_back(
-                blocks_t::value_type(new data::PaddingBlock(b, e)));
-          }
-        else if (type == block_m::TerminationID)
-          {
-            last_block = true;
-            n_blocks.emplace_back(
-                blocks_t::value_type(new data::TerminationBlock(b, e)));
-          }
-        else
-          ex.throw_ex<std::logic_error>("invalid block type.");
-
-        reader.skip_bytes(e - b);
+          blocks_t::value_type block;
+          data::Blocks::ReadToBlock(reader, block, ex);
+          data::Blocks::AddBlock(n_blocks, std::move(block), ex);
       }  // end-while
 
     std::lock_guard<std::mutex> blk_mtx(blocks_mutex_);
-    blocks = std::move(n_blocks);
+    blocks_.swap(n_blocks);
+  }
+
+  template <class TBlock, 
+            typename = std::enable_if_t<
+                std::is_same<TBlock, data::DateTimeBlock>::value 
+                || std::is_same<TBlock, data::I2NPBlock>::value
+                || std::is_same<TBlock, data::InfoBlock>::value
+                || std::is_same<TBlock, data::OptionsBlock>::value
+                || std::is_same<TBlock, data::PaddingBlock>::value
+                || std::is_same<TBlock, data::TerminationBlock>::value>>
+  void add_block(TBlock block)
+  {
+    const exception::Exception ex{"DataPhase: Message", __func__};
+
+    std::lock_guard<std::mutex> blkg(blocks_mutex_);
+
+    if (data::Blocks::TotalSize(blocks_) + block.size() > MaxLen)
+      ex.throw_ex<std::length_error>("invalid total message size.");
+
+    data::Blocks::AddBlock(
+        blocks_, 
+        blocks_t::value_type(block),
+        {"DataPhase: Message", __func__});
+  }
+
+  /// @brief Get the block at a given index
+  /// @throw Invalid argument on out-of-range index
+  blocks_t::value_type& get_block(const std::uint16_t index)
+  {
+    const exception::Exception ex{"DataPhase: Message", __func__};
+
+    if (index > blocks_.size())
+      ex.throw_ex<std::invalid_argument>("index out-of-range.");
+
+    return blocks_[index];
+  }
+
+  /// @brief Get the first block of a given type
+  /// @param type Type of block to search for
+  /// @throw Invalid argument on out-of-range index
+  blocks_t::value_type& get_block(const data::Block::type_t type)
+  {
+    const exception::Exception ex{"DataPhase: Message", __func__};
+
+    std::lock_guard<std::mutex> blkg(blocks_mutex_);
+    const auto it = std::find_if(
+        blocks_.begin(),
+        blocks_.end(),
+        [type](const blocks_t::value_type& blk) {
+          return boost::apply_visitor(data::Blocks::GetType(), blk) == type;
+        });
+
+    if (it == blocks_.end())
+      ex.throw_ex<std::invalid_argument>("no block of search type", static_cast<int>(type));
+
+    return *it;
+  }
+
+  void clear_blocks()
+  {
+    std::lock_guard<std::mutex> blkg(blocks_mutex_);
+    blocks_.clear();
+  }
+
+  const buffer_t& buffer() const noexcept
+  {
+    return buffer_;
+  }
+
+  buffer_t& buffer() noexcept
+  {
+    return buffer_;
+  }
+
+  const blocks_t& blocks() const noexcept
+  {
+    return blocks_;
   }
 
  private:
+  blocks_t blocks_;
+  buffer_t buffer_;
   std::mutex blocks_mutex_;
   std::mutex buffer_mutex_;
 };

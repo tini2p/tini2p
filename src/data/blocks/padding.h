@@ -34,6 +34,8 @@
 
 #include "src/crypto/rand.h"
 
+#include "src/data/router/info.h"
+
 #include "src/data/blocks/block.h"
 
 namespace tini2p
@@ -43,18 +45,22 @@ namespace data
 /// @brief Options NTCP2 block
 class PaddingBlock : public Block
 {
-  std::vector<std::uint8_t> padding_;
-
  public:
-  PaddingBlock() : Block(meta::block::PaddingID), padding_{}
+  using padding_t = crypto::SecBytes;  //< Padding trait alias
+
+  enum
+  {
+    MaxPaddingLen = MaxLen - (HeaderLen + data::Info::MinLen),
+  };
+
+  PaddingBlock() : Block(type_t::Padding), padding_{}
   {
     serialize();
   }
 
   /// @brief Create a PaddingBlock from a length
   /// @param size Length of padding in the block
-  explicit PaddingBlock(const std::uint16_t size)
-      : Block(meta::block::PaddingID, size)
+  explicit PaddingBlock(const std::uint16_t size) : Block(type_t::Padding, size)
   {
     padding_.resize(size);
     serialize();
@@ -65,14 +71,20 @@ class PaddingBlock : public Block
   /// @param end End of the iterator range
   template <class BegIt, class EndIt>
   PaddingBlock(const BegIt begin, const EndIt end)
-      : Block(meta::block::PaddingID)
+      : Block(type_t::Padding)
   {
     buf_.insert(buf_.begin(), begin, end);
     deserialize();
   }
 
   /// @brief Get a const refernce to the padding
-  const decltype(padding_)& padding() const noexcept
+  const padding_t& padding() const noexcept
+  {
+    return padding_;
+  }
+
+  /// @brief Get a non-const refernce to the padding
+  padding_t& padding() noexcept
   {
     return padding_;
   }
@@ -85,9 +97,9 @@ class PaddingBlock : public Block
     check_params({"PaddingBlock", __func__});
 
     buf_.resize(size());
-    tini2p::crypto::RandBytes(padding_);
+    crypto::RandBytes(padding_);
 
-    tini2p::BytesWriter<decltype(buf_)> writer(buf_);
+    tini2p::BytesWriter<buffer_t> writer(buf_);
 
     writer.write_bytes(type_);
     writer.write_bytes(size_);
@@ -99,7 +111,7 @@ class PaddingBlock : public Block
   /// @brief Deserialize options block to buffer
   void deserialize()
   {
-    tini2p::BytesReader<decltype(buf_)> reader(buf_);
+    tini2p::BytesReader<buffer_t> reader(buf_);
 
     reader.read_bytes(type_);
     reader.read_bytes(size_);
@@ -114,15 +126,17 @@ class PaddingBlock : public Block
   }
 
  private:
-  void check_params(const tini2p::exception::Exception& ex)
+  void check_params(const exception::Exception& ex)
   {
     // check padding ratios in range (only needed on serializing)
-    if (type_ != meta::block::PaddingID)
+    if (type_ != type_t::Padding)
       ex.throw_ex<std::runtime_error>("invalid block type.");
 
-    if (size_ > meta::block::MaxPaddingSize)
+    if (size_ > MaxPaddingLen)
       ex.throw_ex<std::length_error>("invalid block size.");
   }
+
+  padding_t padding_;
 };
 }  // namespace data
 }  // namespace tini2p

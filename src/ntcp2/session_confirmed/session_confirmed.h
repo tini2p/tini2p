@@ -34,7 +34,7 @@
 
 #include "src/data/blocks/options.h"
 #include "src/data/blocks/padding.h"
-#include "src/data/blocks/router_info.h"
+#include "src/data/blocks/info.h"
 
 #include "src/ntcp2/session_request/message.h"
 #include "src/ntcp2/session_created/message.h"
@@ -45,11 +45,11 @@ namespace tini2p
 namespace ntcp2
 {
 /// @brief Session created message handler
-template <class RoleT>
+template <class TRole>
 class SessionConfirmed
 {
  public:
-  using role_t = RoleT;  //< Role trait alias
+  using role_t = TRole;  //< Role trait alias
   using state_t = noise::HandshakeState;  //< Handshake state trait alias
   using request_msg_t = SessionRequestMessage;  //< SessionRequest message trait alias
   using created_msg_t = SessionCreatedMessage;  //< SessionCreated message trait alias

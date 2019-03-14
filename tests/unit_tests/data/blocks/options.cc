@@ -31,11 +31,11 @@
 
 #include "src/data/blocks/options.h"
 
-namespace meta = tini2p::meta::block;
+using tini2p::data::OptionsBlock;
 
 struct OptionsBlockFixture
 {
-  tini2p::data::OptionsBlock block;
+  OptionsBlock block;
 };
 
 TEST_CASE_METHOD(
@@ -43,7 +43,7 @@ TEST_CASE_METHOD(
     "OptionsBlock has a block ID",
     "[block]")
 {
-  REQUIRE(block.type() == meta::OptionsID);
+  REQUIRE(block.type() == OptionsBlock::type_t::Options);
 }
 
 TEST_CASE_METHOD(
@@ -51,8 +51,8 @@ TEST_CASE_METHOD(
     "OptionsBlock has a block size",
     "[block]")
 {
-  REQUIRE(block.data_size() == meta::OptionsSize);
-  REQUIRE(block.size() == meta::HeaderSize + meta::OptionsSize);
+  REQUIRE(block.data_size() == OptionsBlock::OptionsLen);
+  REQUIRE(block.size() == OptionsBlock::HeaderLen + OptionsBlock::OptionsLen);
   REQUIRE(block.size() == block.buffer().size());
 }
 
@@ -64,29 +64,29 @@ TEST_CASE_METHOD(
   REQUIRE_NOTHROW(block.serialize());
 
   // check min padding ratios
-  block.tmin = meta::MinPaddingRatio;
+  block.tmin = block.min_padding_ratio();
   REQUIRE_NOTHROW(block.serialize());
 
-  block.tmax = meta::MinPaddingRatio;
+  block.tmax = block.min_padding_ratio();
   REQUIRE_NOTHROW(block.serialize());
 
-  block.rmin = meta::MinPaddingRatio;
+  block.rmin = block.min_padding_ratio();
   REQUIRE_NOTHROW(block.serialize());
 
-  block.rmax = meta::MinPaddingRatio;
+  block.rmax = block.min_padding_ratio();
   REQUIRE_NOTHROW(block.serialize());
 
   // check max padding ratios
-  block.tmax = meta::MaxPaddingRatio;
+  block.tmax = block.max_padding_ratio();
   REQUIRE_NOTHROW(block.serialize());
 
-  block.tmin = meta::MaxPaddingRatio;
+  block.tmin = block.max_padding_ratio();
   REQUIRE_NOTHROW(block.serialize());
 
-  block.rmax = meta::MaxPaddingRatio;
+  block.rmax = block.max_padding_ratio();
   REQUIRE_NOTHROW(block.serialize());
 
-  block.rmin = meta::MaxPaddingRatio;
+  block.rmin = block.max_padding_ratio();
   REQUIRE_NOTHROW(block.serialize());
 }
 
@@ -110,11 +110,11 @@ TEST_CASE_METHOD(
   REQUIRE_NOTHROW(block.serialize());
 
   // invalidate the block ID
-  ++block.buffer()[meta::TypeOffset];
+  ++block.buffer()[OptionsBlock::TypeOffset];
 
   REQUIRE_THROWS(block.deserialize());
 
-  block.buffer()[meta::TypeOffset] += 2;
+  block.buffer()[OptionsBlock::TypeOffset] += 2;
 
   REQUIRE_THROWS(block.deserialize());
 }
@@ -128,12 +128,12 @@ TEST_CASE_METHOD(
   REQUIRE_NOTHROW(block.serialize());
 
   // invalidate the size 
-  ++block.buffer()[meta::SizeOffset];
+  ++block.buffer()[OptionsBlock::SizeOffset];
 
   REQUIRE_THROWS(block.deserialize());
 
   // invalidate the size 
-  block.buffer()[meta::SizeOffset] -= 2;
+  block.buffer()[OptionsBlock::SizeOffset] -= 2;
 
   REQUIRE_THROWS(block.deserialize());
 }
@@ -144,36 +144,36 @@ TEST_CASE_METHOD(
     "[block]")
 {
   // check invalid parameters (lowerbound)
-  block.tmin = meta::MinPaddingRatio - 1;
+  block.tmin = block.min_padding_ratio() - 1;
   REQUIRE_THROWS(block.serialize());
 
-  block.tmin = meta::MinPaddingRatio;
-  block.tmax = meta::MinPaddingRatio - 1;
+  block.tmin = block.min_padding_ratio();
+  block.tmax = block.min_padding_ratio() - 1;
   REQUIRE_THROWS(block.serialize());
 
-  block.tmax = meta::MinPaddingRatio;
-  block.rmin = meta::MinPaddingRatio - 1;
+  block.tmax = block.min_padding_ratio();
+  block.rmin = block.min_padding_ratio() - 1;
   REQUIRE_THROWS(block.serialize());
 
-  block.rmin = meta::MinPaddingRatio;
-  block.rmax = meta::MinPaddingRatio - 1;
+  block.rmin = block.min_padding_ratio();
+  block.rmax = block.min_padding_ratio() - 1;
   REQUIRE_THROWS(block.serialize());
 
   // check invalid parameters (upperbound)
-  block.rmax = meta::MinPaddingRatio;
-  block.tmin = meta::MaxPaddingRatio + 1;
+  block.rmax = block.min_padding_ratio();
+  block.tmin = block.max_padding_ratio() + 1;
   REQUIRE_THROWS(block.serialize());
 
-  block.tmin = meta::MaxPaddingRatio;
-  block.tmax = meta::MaxPaddingRatio + 1;
+  block.tmin = block.max_padding_ratio();
+  block.tmax = block.max_padding_ratio() + 1;
   REQUIRE_THROWS(block.serialize());
 
-  block.tmax = meta::MaxPaddingRatio;
-  block.rmin = meta::MaxPaddingRatio + 1;
+  block.tmax = block.max_padding_ratio();
+  block.rmin = block.max_padding_ratio() + 1;
   REQUIRE_THROWS(block.serialize());
 
-  block.rmin = meta::MaxPaddingRatio;
-  block.rmax = meta::MaxPaddingRatio + 1;
+  block.rmin = block.max_padding_ratio();
+  block.rmax = block.max_padding_ratio() + 1;
   REQUIRE_THROWS(block.serialize());
 }
 

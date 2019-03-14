@@ -45,10 +45,40 @@ namespace data
 class Block
 {
  public:
-  using type_t = meta::block::Types;  //< Type trait alias
+  enum : std::uint16_t
+  {
+    TypeLen = 1,
+    SizeLen = 2,
+    HeaderLen = 3,
+    MaxLen = 65516,
+  };
+
+  enum : std::uint8_t
+  {
+    TypeOffset = 0,
+    SizeOffset = 1,
+    DataOffset = 3
+  };
+
+  enum struct Type : std::uint8_t
+  {
+    DateTime = 0,
+    Options,
+    Info,
+    I2NP,
+    Termination,
+    // 5-223 unknown, see spec
+    // 224-253 + 255 reserved for future use, see spec
+    Padding = 254,
+    Reserved = 255,
+  };
+
+  using type_t = Type;  //< Type trait alias
   using buffer_t = crypto::SecBytes;  //< Buffer trait alias
   using size_type = boost::endian::big_uint16_t;  //< Size type trait alias
-  using pointer = std::unique_ptr<Block>;  //< Pointer trait alias
+  using pointer = Block*;  //< Non-owning pointer trait alias
+  using unique_ptr = std::unique_ptr<Block>;  //< Unique pointer trait alias
+  using shared_ptr = std::shared_ptr<Block>;  //< Shared pointer trait alias
 
   virtual ~Block() = default;
 
@@ -73,7 +103,7 @@ class Block
   /// @brief Get the block's total size
   std::uint16_t size() const noexcept
   {
-    return meta::block::HeaderSize + size_;
+    return HeaderLen + size_;
   }
 
   /// @brief get the payload data size
@@ -105,7 +135,7 @@ class Block
   Block(const type_t type, const std::uint16_t size)
       : type_(type), size_(size)
   {
-    buf_.resize(meta::block::HeaderSize + size);
+    buf_.resize(HeaderLen + size);
   }
 
   type_t type_;

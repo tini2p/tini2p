@@ -39,15 +39,14 @@ add_executable(tini2p-tests
   crypto/codecs.cc
   crypto/ecies/x25519.cc
   crypto/eddsa/eddsa_sha512.cc
-  #crypto/radix.cc
   crypto/siphash.cc
   crypto/x25519.cc
 
   data/blocks/date_time.cc
   data/blocks/i2np.cc
+  data/blocks/info.cc
   data/blocks/options.cc
   data/blocks/padding.cc
-  data/blocks/router_info.cc
   data/blocks/termination.cc
 
   data/router/address.cc

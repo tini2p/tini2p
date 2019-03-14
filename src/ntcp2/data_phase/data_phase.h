@@ -221,7 +221,8 @@ class DataPhase
       ex.throw_ex<std::invalid_argument>("empty message.");
 
     length += crypto::Poly1305::DigestLen;
-    message.buffer.resize(message_t::SizeLen + length);
+    auto& buf = message.buffer();
+    buf.resize(message_t::SizeLen + length);
 
     const auto dir = std::is_same<role_t, Initiator>::value
                          ? message_t::Dir::BobToAlice
@@ -229,7 +230,7 @@ class DataPhase
 
     // obfuscate message length
     kdf_.ProcessLength(length, dir);
-    tini2p::write_bytes(message.buffer.data(), length);
+    tini2p::write_bytes(buf.data(), length);
 
     // seriailze message blocks to buffer
     message.serialize();
@@ -237,8 +238,8 @@ class DataPhase
     // encrypt message in place
     noise::encrypt(
         kdf_.cipherstate(dir),
-        &message.buffer[message_t::SizeLen],
-        message.buffer.size() - message_t::SizeLen,
+        &buf[message_t::SizeLen],
+        buf.size() - message_t::SizeLen,
         ex);
   }
 
@@ -249,8 +250,8 @@ class DataPhase
   {
     const exception::Exception ex{"DataPhase", __func__};
 
-    auto& buf = message.buffer;
-    if (buf.size() < message_t::MinSize || buf.size() > message_t::MaxSize)
+    auto& buf = message.buffer();
+    if (buf.size() < message_t::MinLen || buf.size() > message_t::MaxLen)
       ex.throw_ex<std::length_error>("invalid ciphertext size.");
 
     boost::endian::big_uint16_t length;
@@ -266,13 +267,13 @@ class DataPhase
     if (length - crypto::Poly1305::DigestLen <= 0)
       return;
 
-    if (length > message_t::MaxSize - message_t::SizeLen)
+    if (length > message_t::MaxLen - message_t::SizeLen)
       ex.throw_ex<std::length_error>("invalid message size.");
 
     noise::decrypt(kdf_.cipherstate(dir), &buf[message_t::SizeLen], length, ex);
 
     // deserialize blocks from buffer
-    message.buffer.resize(message_t::SizeLen + length);
+    buf.resize(message_t::SizeLen + length);
     message.deserialize();
   }
 

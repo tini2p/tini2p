@@ -61,7 +61,7 @@ struct MockHandshake
       : remote_info(new tini2p::data::Info()),
         local_info(new tini2p::data::Info()),
         sco_message(
-            local_info.get(),
+            local_info,
             crypto::RandInRange(
                 confirmed_msg_t::MinPaddingSize,
                 confirmed_msg_t::MaxPaddingSize)),
@@ -161,7 +161,7 @@ struct MockHandshake
   crypto::X25519::pubkey_t remote_key;
   tini2p::data::Identity::hash_t router_hash;
   obfse_t::iv_t iv;
-  std::unique_ptr<tini2p::data::Info> remote_info, local_info;
+  tini2p::data::Info::shared_ptr remote_info, local_info;
 
   // handshake messages, session confirmed must be initialized first to initialize the session request message
   confirmed_msg_t sco_message;

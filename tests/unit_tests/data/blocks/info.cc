@@ -29,40 +29,40 @@
 
 #include <catch2/catch.hpp>
 
-#include "src/data/blocks/router_info.h"
+#include "src/data/blocks/info.h"
 
-namespace meta = tini2p::meta::block;
+using tini2p::data::InfoBlock;
 
-struct RouterInfoBlockFixture
+struct InfoBlockFixture
 {
-  RouterInfoBlockFixture() : info(new tini2p::data::Info()), block(info.get())
+  InfoBlockFixture() : info(new tini2p::data::Info()), block(info)
   {
   }
 
-  std::unique_ptr<tini2p::data::Info> info;
-  tini2p::data::RouterInfoBlock block;
+  tini2p::data::Info::shared_ptr info;
+  InfoBlock block;
 };
 
 TEST_CASE_METHOD(
-    RouterInfoBlockFixture,
-    "RouterInfoBlock has a block ID",
+    InfoBlockFixture,
+    "InfoBlock has a block ID",
     "[block]")
 {
-  REQUIRE(block.type() == meta::RouterInfoID);
+  REQUIRE(block.type() == InfoBlock::Type::Info);
 }
 
 TEST_CASE_METHOD(
-    RouterInfoBlockFixture,
-    "RouterInfoBlock has a block size",
+    InfoBlockFixture,
+    "InfoBlock has a block size",
     "[block]")
 {
-  REQUIRE(block.data_size() >= meta::MinRouterInfoSize);
-  REQUIRE(block.data_size() <= meta::MaxRouterInfoSize);
+  REQUIRE(block.data_size() >= InfoBlock::MinInfoLen);
+  REQUIRE(block.data_size() <= InfoBlock::MaxInfoLen);
 }
 
 TEST_CASE_METHOD(
-    RouterInfoBlockFixture,
-    "RouterInfoBlock serializes and deserializes a valid block",
+    InfoBlockFixture,
+    "InfoBlock serializes and deserializes a valid block",
     "[block]")
 {
   // serialize a valid block
@@ -72,33 +72,33 @@ TEST_CASE_METHOD(
 }
 
 TEST_CASE_METHOD(
-    RouterInfoBlockFixture,
-    "RouterInfoBlock fails to deserialize invalid ID",
+    InfoBlockFixture,
+    "InfoBlock fails to deserialize invalid ID",
     "[block]")
 {
   // serialize a valid block
   REQUIRE_NOTHROW(block.serialize());
 
   // invalidate the block ID
-  ++block.buffer()[meta::TypeOffset];
+  ++block.buffer()[InfoBlock::TypeOffset];
   REQUIRE_THROWS(block.deserialize());
 
-  block.buffer()[meta::TypeOffset] -= 2;
+  block.buffer()[InfoBlock::TypeOffset] -= 2;
   REQUIRE_THROWS(block.deserialize());
 }
 
 TEST_CASE_METHOD(
-    RouterInfoBlockFixture,
-    "RouterInfoBlock fails to deserialize invalid size",
+    InfoBlockFixture,
+    "InfoBlock fails to deserialize invalid size",
     "[block]")
 {
   // serialize a valid block
   REQUIRE_NOTHROW(block.serialize());
 
   // invalidate the size
-  tini2p::write_bytes(&block.buffer()[meta::SizeOffset], meta::MaxRouterInfoSize + 1);
+  tini2p::write_bytes(&block.buffer()[InfoBlock::SizeOffset], InfoBlock::MaxInfoLen + 1);
   REQUIRE_THROWS(block.deserialize());
 
-  tini2p::write_bytes(&block.buffer()[meta::SizeOffset], meta::MinRouterInfoSize - 1);
+  tini2p::write_bytes(&block.buffer()[InfoBlock::SizeOffset], InfoBlock::MinInfoLen - 1);
   REQUIRE_THROWS(block.deserialize());
 }

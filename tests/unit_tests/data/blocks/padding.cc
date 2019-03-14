@@ -31,22 +31,22 @@
 
 #include "src/data/blocks/padding.h"
 
-namespace meta = tini2p::meta::block;
+using tini2p::data::PaddingBlock;
 
 struct PaddingBlockFixture
 {
-  tini2p::data::PaddingBlock block;
+  PaddingBlock block;
 };
 
 TEST_CASE_METHOD(PaddingBlockFixture, "PaddingBlock has a valid block ID", "[block]")
 {
-  REQUIRE(block.type() == meta::PaddingID);
+  REQUIRE(block.type() == PaddingBlock::type_t::Padding);
 }
 
 TEST_CASE_METHOD(PaddingBlockFixture, "PaddingBlock has a valid size", "[block]")
 {
   REQUIRE(block.size() == block.buffer().size());
-  REQUIRE(block.data_size() <= meta::MaxPaddingSize);
+  REQUIRE(block.data_size() <= PaddingBlock::MaxPaddingLen);
   REQUIRE(block.data_size() == block.padding().size());
 }
 
@@ -61,9 +61,9 @@ TEST_CASE_METHOD(
   // deserialize from buffer
   REQUIRE_NOTHROW(block.deserialize());
 
-  REQUIRE(block.type() == meta::PaddingID);
+  REQUIRE(block.type() == PaddingBlock::type_t::Padding);
   REQUIRE(block.size() == block.buffer().size());
-  REQUIRE(block.data_size() <= meta::MaxPaddingSize);
+  REQUIRE(block.data_size() <= PaddingBlock::MaxPaddingLen);
   REQUIRE(block.data_size() == block.padding().size());
 }
 
@@ -76,10 +76,10 @@ TEST_CASE_METHOD(
   REQUIRE_NOTHROW(block.serialize());
 
   // invalidate the block ID
-  ++block.buffer()[meta::TypeOffset];
+  ++block.buffer()[PaddingBlock::TypeOffset];
   REQUIRE_THROWS(block.deserialize());
 
-  block.buffer()[meta::TypeOffset] -= 2;
+  block.buffer()[PaddingBlock::TypeOffset] -= 2;
   REQUIRE_THROWS(block.deserialize());
 }
 
@@ -93,7 +93,7 @@ TEST_CASE_METHOD(
 
   // invalidate the size
   REQUIRE_NOTHROW(tini2p::write_bytes(
-      &block.buffer()[meta::SizeOffset], meta::MaxPaddingSize + 1));
+      &block.buffer()[PaddingBlock::SizeOffset], PaddingBlock::MaxPaddingLen + 1));
 
   REQUIRE_THROWS(block.deserialize());
 }

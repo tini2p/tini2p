@@ -36,15 +36,6 @@ namespace meta
 {
 namespace block
 {
-enum DateTimeSizes : std::uint8_t
-{
-  TimestampSize = 4,
-};
-
-enum DateTimeOffsets : std::uint8_t
-{
-  TimestampOffset = 3,
-};
 }  // namespace block
 }  // namespace meta
 }  // namespace tini2p

@@ -50,8 +50,14 @@ class DateTimeBlock : public Block
   boost::endian::big_uint32_t timestamp_;
 
  public:
+  enum : std::uint8_t
+  {
+    TimestampLen = 4,
+    TimestampOffset = 3,
+  };
+
   DateTimeBlock()
-      : Block(meta::block::DateTimeID, meta::block::TimestampSize),
+      : Block(type_t::DateTime, TimestampLen),
         timestamp_(time::now_s())
   {
     serialize();
@@ -59,7 +65,7 @@ class DateTimeBlock : public Block
 
   template <class BegIt, class EndIt>
   DateTimeBlock(const BegIt begin, const EndIt end)
-      : Block(meta::block::DateTimeID, end - begin)
+      : Block(type_t::DateTime, end - begin)
   {
     buf_.insert(buf_.begin(), begin, end);
     deserialize();
@@ -88,7 +94,7 @@ class DateTimeBlock : public Block
   {
     check_params({"DateTimeBlock", __func__});
 
-    tini2p::BytesWriter<decltype(buf_)> writer(buf_);
+    tini2p::BytesWriter<buffer_t> writer(buf_);
 
     writer.write_bytes(type_);
     writer.write_bytes(size_);
@@ -99,7 +105,7 @@ class DateTimeBlock : public Block
   /// @throw Length error if invalid size
   void deserialize()
   {
-    tini2p::BytesReader<decltype(buf_)> reader(buf_);
+    tini2p::BytesReader<buffer_t> reader(buf_);
 
     reader.read_bytes(type_);
     reader.read_bytes(size_);
@@ -109,12 +115,12 @@ class DateTimeBlock : public Block
   }
 
  private:
-  void check_params(const tini2p::exception::Exception& ex)
+  void check_params(const exception::Exception& ex)
   {
-    if (type_ != meta::block::DateTimeID)
+    if (type_ != type_t::DateTime)
       ex.throw_ex<std::runtime_error>("invalid block ID.");
 
-    if (size_ != meta::block::TimestampSize)
+    if (size_ != TimestampLen)
       ex.throw_ex<std::length_error>("invalid size.");
 
     if (!time::check_lag_s(timestamp_))

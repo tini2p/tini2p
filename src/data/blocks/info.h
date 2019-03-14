@@ -27,8 +27,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef SRC_DATA_BLOCKS_ROUTER_INFO_H_
-#define SRC_DATA_BLOCKS_ROUTER_INFO_H_
+#ifndef SRC_DATA_BLOCKS_INFO_H_
+#define SRC_DATA_BLOCKS_INFO_H_
 
 #include "src/exception/exception.h"
 
@@ -44,56 +44,102 @@ namespace tini2p
 namespace data
 {
 /// @brief RouterInfo NTCP2 block
-class RouterInfoBlock : public Block
+class InfoBlock : public Block
 {
-  meta::block::RouterInfoFlags flag_;
-  std::unique_ptr<Info> own_info_;  // owning ptr for deserializing
-  Info* info_;  // non-owning ptr
-
  public:
-  RouterInfoBlock()
-      : Block(
-            meta::block::RouterInfoID,
-            meta::block::FloodFlagSize + data::Info::DefaultLen),
-        flag_(meta::block::FloodFlag),
+  enum : std::uint16_t
+  {
+    FloodFlagLen = 1,
+    InfoHeaderLen = HeaderLen + FloodFlagLen,
+    MinInfoLen = 440,  //< min RI (439) + flag (1)
+    MaxInfoLen = MaxLen,
+    MACLen = 16,
+    MinPayloadLen = FloodFlagLen + MinInfoLen,
+    MaxPayloadLen = FloodFlagLen + MaxInfoLen,
+    MinMsg3Pt2Len = MinInfoLen + MACLen,
+    MaxMsg3Pt2Len = MaxInfoLen + MACLen,
+    MinPaddingLen = 0,
+    MaxPaddingLen = MaxMsg3Pt2Len - MinInfoLen,
+  };
+
+  enum : std::uint8_t
+  {
+    FloodFlagOffset = 3,
+    RouterInfoOffset,
+  };
+
+  enum struct Flag : std::uint8_t
+  {
+    FloodFlag = 0x01,
+  };
+
+  using flag_t = Flag;  //< Flag trait alias
+  using info_ptr = Info::shared_ptr;  //< RouterInfo pointer trait alias
+  using const_info_ptr = Info::const_shared_ptr;  //< Constant RouterInfo pointer trait alias
+
+  InfoBlock()
+      : Block(type_t::Info, FloodFlagLen + MinInfoLen),
+        flag_(flag_t::FloodFlag),
         info_(nullptr)
   {
   }
 
-  /// @brief Create a RouterInfoBlock from a RouterInfo
+  InfoBlock(const InfoBlock& oth)
+      : Block(type_t::Info, oth.size_), flag_(oth.flag_), info_(oth.info_)
+  {
+  }
+
+  /// @brief Create a InfoBlock from a RouterInfo
   /// @param info RouterInfo to create the block
-  explicit RouterInfoBlock(Info* info)
-      : Block(
-            meta::block::RouterInfoID,
-            meta::block::FloodFlagSize + info->size()),
-        flag_(meta::block::FloodFlag),
+  explicit InfoBlock(info_ptr info)
+      : Block(type_t::Info, FloodFlagLen + MinInfoLen),
+        flag_(flag_t::FloodFlag),
         info_(info)
   {
+    const exception::Exception ex{"InfoBlock", __func__};
+
+    if (!info)
+      ex.throw_ex<std::invalid_argument>("null RouterInfo.");
+
+    size_ = FloodFlagLen + info->size();
+    buf_.resize(HeaderLen + size_);
+
     serialize();
   }
 
-  /// @brief Create a RouterInfoBlock from an iterator range
+  /// @brief Create a InfoBlock from an iterator range
   /// @tparam BegIt Beginning iterator type
   /// @tparam EndIt Ending iterator type
   /// @param begin Beginning iterator
   /// @param end Ending iterator
   template <class BegIt, class EndIt>
-  RouterInfoBlock(const BegIt begin, const EndIt end)
-      : Block(meta::block::RouterInfoID)
+  InfoBlock(const BegIt begin, const EndIt end) : Block(type_t::Info)
   {
     buf_.resize(end - begin);
     buf_.insert(buf_.begin(), begin, end);
     deserialize();
   }
 
-  /// @brief Get a const reference to the router info
-  const Info& info() const noexcept
+  void operator=(const InfoBlock& oth)
   {
-    return *info_;
+    flag_ = oth.flag_;
+    info_ = oth.info_;
   }
 
-  /// @brief Get a non-const reference to the router info
-  Info* info() noexcept
+  void operator=(InfoBlock&& oth)
+  {
+    flag_ = std::move(oth.flag_);
+    info_ = std::move(oth.info_);
+  }
+
+  /// @brief Get a const pointer to the router info
+  const_info_ptr info() const noexcept
+  {
+    return info_;
+  }
+
+  /// @brief Get a non-const pointer to the router info
+  info_ptr info() noexcept
   {
     return info_;
   }
@@ -102,12 +148,12 @@ class RouterInfoBlock : public Block
   /// @throw Length error if invalid size
   void serialize()
   {
-    const tini2p::exception::Exception ex{"RouterInfoBlock", __func__};
+    const exception::Exception ex{"InfoBlock", __func__};
 
     check_params(ex);
 
     buf_.resize(size());
-    tini2p::BytesWriter<decltype(buf_)> writer(buf_);
+    tini2p::BytesWriter<buffer_t> writer(buf_);
 
     writer.write_bytes(type_);
     writer.write_bytes(size_);
@@ -121,36 +167,31 @@ class RouterInfoBlock : public Block
   /// @throw Length error if invalid size
   void deserialize()
   {
-    namespace meta = tini2p::meta::block;
+    const exception::Exception ex{"InfoBlock", __func__};
 
-    const tini2p::exception::Exception ex{"RouterInfoBlock", __func__};
-
-    tini2p::BytesReader<decltype(buf_)> reader(buf_);
+    tini2p::BytesReader<buffer_t> reader(buf_);
 
     reader.read_bytes(type_);
     reader.read_bytes(size_);
     reader.read_bytes(flag_);
 
-    std::vector<std::uint8_t> ri_buf;
-    ri_buf.resize(size_ - meta::FloodFlagSize);
+    crypto::SecBytes ri_buf;
+    ri_buf.resize(size_ - FloodFlagLen);
     reader.read_data(ri_buf);
-    own_info_ = std::make_unique<Info>(std::move(ri_buf));
-    info_ = own_info_.get();
+    info_.reset(new Info(std::move(ri_buf)));
 
     check_params(ex);
   }
 
  private:
-  void check_params(const tini2p::exception::Exception& ex)
+  void check_params(const exception::Exception& ex)
   {
-    namespace meta = tini2p::meta::block;
-
     // check for valid block ID
-    if (type_ != meta::RouterInfoID)
+    if (type_ != type_t::Info)
       ex.throw_ex<std::runtime_error>("invalid block ID.");
 
     // check if flag contains reserved flag bits
-    if (flag_ & ~meta::FloodFlagMask)
+    if (static_cast<std::uint8_t>(flag_) >> 1 != 0)
       ex.throw_ex<std::runtime_error>("invalid flood request flag.");
 
     // check for a valid router info
@@ -158,12 +199,15 @@ class RouterInfoBlock : public Block
       ex.throw_ex<std::runtime_error>("need a valid RouterInfo.");
 
     // check for valid total size
-    if (size_ < meta::MinRIPayloadSize || size_ > meta::MaxRIPayloadSize
-        || size_ != meta::FloodFlagSize + info_->size())
+    if (size_ < MinPayloadLen || size_ > MaxPayloadLen
+        || size_ != FloodFlagLen + info_->size())
       ex.throw_ex<std::length_error>("invalid block size.");
   }
+
+  flag_t flag_;
+  info_ptr info_;
 };
 }  // namespace data
 }  // namespace tini2p
 
-#endif  // SRC_DATA_BLOCKS_ROUTER_INFO_H_
+#endif  // SRC_DATA_BLOCKS_INFO_H_

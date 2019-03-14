@@ -57,12 +57,10 @@ struct SessionFixture
                     host_v6.address().to_string(),
                     host_v6.port())})),
         info(new tini2p::data::Info()),
-        manager(dest.get(), host, host_v6),
-        init(dest.get(), info.get())
+        manager(dest, host, host_v6),
+        init(dest, info)
   {
-    using BlockPtr = std::unique_ptr<tini2p::data::Block>;
-
-    msg.blocks.emplace_back(BlockPtr(new tini2p::data::PaddingBlock(3)));
+    msg.add_block(tini2p::data::PaddingBlock(32));
 
     // give session listeners time to start before sending requests
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -130,7 +128,7 @@ TEST_CASE_METHOD(
     "Manager Session writes and reads after successful connection",
     "[session]")
 {
-  auto* mgr_init = manager.session(dest.get());
+  auto* mgr_init = manager.session(dest);
 
   REQUIRE(mgr_init);
   REQUIRE_NOTHROW(mgr_init->Start(meta::IP_t::v6));
@@ -158,9 +156,9 @@ TEST_CASE_METHOD(
     "SessionManager rejects multiple sessions to same destination",
     "[session]")
 {
-  REQUIRE_NOTHROW(manager.session(dest.get()));
+  REQUIRE_NOTHROW(manager.session(dest));
 
-  REQUIRE_THROWS(manager.session(dest.get()));
+  REQUIRE_THROWS(manager.session(dest));
 }
 
 TEST_CASE_METHOD(
@@ -174,7 +172,7 @@ TEST_CASE_METHOD(
 
   boost::asio::io_context ctx;
   Session<Responder> resp(
-      dest.get(),
+      dest,
       boost::asio::ip::tcp::socket(ctx, boost::asio::ip::tcp::v6()));
 
   REQUIRE(!resp.ready());
@@ -195,7 +193,7 @@ TEST_CASE_METHOD(
     "SessionManager rejects new connection for already existing session",
     "[session]")
 {
-  Session<Initiator> s0(dest.get(), info.get()), s1(dest.get(), info.get());
+  Session<Initiator> s0(dest, info), s1(dest, info);
 
   REQUIRE_NOTHROW(s0.Start(meta::IP_t::v6));
   std::this_thread::sleep_for(std::chrono::milliseconds(50));

@@ -45,14 +45,44 @@ namespace data
 {
 class TerminationBlock : public Block
 {
-  meta::block::TerminationReason rsn_;
-  boost::endian::big_uint64_t valid_frames_;
-  std::vector<std::uint8_t> add_data_;
-
  public:
+  enum
+  {
+    TermHeaderLen = 9,
+    MinTermLen = TermHeaderLen,
+    MaxTermLen = MaxLen,
+    MaxTermAddDataLen = MaxTermLen - TermHeaderLen,
+  };
+
+  enum struct Reason : std::uint8_t
+  {
+    NormalClose = 0,
+    TerminationRecvd,
+    IdleTimeout,
+    RouterShutdown,
+    DataPhaseAEADFail,
+    IncompatibleOpts,
+    IncompatibleSig,
+    ClockSkew,
+    PaddingViolation,
+    AEADFramingError,
+    PayloadFormatError,
+    SessionRequestError,
+    SessionCreatedError,
+    SessionConfirmedError,
+    ReadTimeout,
+    SigVerificationFail,
+    InvalidS,
+    Banned
+  };
+
+  using reason_t = Reason;  //< Termination reason trait alias
+  using frames_t = boost::endian::big_uint64_t;  //< Valid frames trait alias
+  using ad_t = std::vector<std::uint8_t>;  //< Additional data trait alias
+
   TerminationBlock()
-      : Block(meta::block::TerminationID, meta::block::MinTermSize),
-        rsn_(meta::block::NormalClose),
+      : Block(type_t::Termination, MinTermLen),
+        rsn_(reason_t::NormalClose),
         valid_frames_(0)
   {
     serialize();
@@ -61,7 +91,7 @@ class TerminationBlock : public Block
   /// @brief Convert a TERMINATIONBlock from an iterator range
   template <class BegIt, class EndIt>
   TerminationBlock(const BegIt begin, const EndIt end)
-      : Block(meta::block::TerminationID, end - begin)
+      : Block(type_t::Termination, end - begin)
   {
     buf_.insert(buf_.begin(), begin, end);
     deserialize();
@@ -70,52 +100,52 @@ class TerminationBlock : public Block
   /// @brief Set the TERMINATION message type
   /// @param type TERMINATION message type
   /// @throw Exception on invalid TERMINATION message type
-  void reason(const decltype(rsn_) reason)
+  void reason(const reason_t reason)
   {
     check_reason(reason, {"TerminationBlock", __func__});
     rsn_ = reason;
   }
 
   /// @brief Get const reference to the Termination reason 
-  const decltype(rsn_)& reason() const noexcept
+  const reason_t& reason() const noexcept
   {
     return rsn_;
   }
 
   /// @brief Get a const reference to Termination additional data
-  const decltype(add_data_)& add_data() const noexcept
+  const ad_t& ad() const noexcept
   {
-    return add_data_;
+    return ad_;
   }
 
   /// @brief Get a non-const reference to Termination message data
-  decltype(add_data_)& add_data() noexcept
+  ad_t& ad() noexcept
   {
-    return add_data_;
+    return ad_;
   }
 
   /// @brief Serialize Termination block to buffer
   void serialize()
   {
-    size_ = meta::block::TermHeaderSize + add_data_.size();
+    size_ = TermHeaderLen + ad_.size();
 
     check_params({"TerminationBlock", __func__});
 
-    buf_.resize(meta::block::HeaderSize + size_);
+    buf_.resize(HeaderLen + size_);
 
-    tini2p::BytesWriter<decltype(buf_)> writer(buf_);
+    tini2p::BytesWriter<buffer_t> writer(buf_);
     writer.write_bytes(type_);
     writer.write_bytes(size_);
     writer.write_bytes(valid_frames_);
     writer.write_bytes(rsn_);
-    if (add_data_.size())
-      writer.write_data(add_data_);
+    if (ad_.size())
+      writer.write_data(ad_);
   }
 
   /// @brief Deserialize TERMINATION block from buffer
   void deserialize()
   {
-    tini2p::BytesReader<decltype(buf_)> reader(buf_);
+    tini2p::BytesReader<buffer_t> reader(buf_);
     reader.read_bytes(type_);
     reader.read_bytes(size_);
     reader.read_bytes(valid_frames_);
@@ -125,50 +155,54 @@ class TerminationBlock : public Block
 
     if (reader.gcount())
       {
-        add_data_.resize(reader.gcount());
-        reader.read_data(add_data_);
+        ad_.resize(reader.gcount());
+        reader.read_data(ad_);
       }
   }
 
  private:
-  void check_reason(const decltype(rsn_) reason, const tini2p::exception::Exception& ex)
+  void check_reason(const reason_t reason, const exception::Exception& ex)
   {
     switch(reason)
     {
-      case meta::block::NormalClose:
-      case meta::block::TerminationRecvd:
-      case meta::block::IdleTimeout:
-      case meta::block::RouterShutdown:
-      case meta::block::DataPhaseAEADFail:
-      case meta::block::IncompatibleOpts:
-      case meta::block::IncompatibleSig:
-      case meta::block::ClockSkew:
-      case meta::block::PaddingViolation:
-      case meta::block::AEADFramingError:
-      case meta::block::PayloadFormatError:
-      case meta::block::SessionRequestError:
-      case meta::block::SessionCreatedError:
-      case meta::block::SessionConfirmedError:
-      case meta::block::ReadTimeout:
-      case meta::block::SigVerificationFail:
-      case meta::block::InvalidS:
-      case meta::block::Banned:
+      case reason_t::NormalClose:
+      case reason_t::TerminationRecvd:
+      case reason_t::IdleTimeout:
+      case reason_t::RouterShutdown:
+      case reason_t::DataPhaseAEADFail:
+      case reason_t::IncompatibleOpts:
+      case reason_t::IncompatibleSig:
+      case reason_t::ClockSkew:
+      case reason_t::PaddingViolation:
+      case reason_t::AEADFramingError:
+      case reason_t::PayloadFormatError:
+      case reason_t::SessionRequestError:
+      case reason_t::SessionCreatedError:
+      case reason_t::SessionConfirmedError:
+      case reason_t::ReadTimeout:
+      case reason_t::SigVerificationFail:
+      case reason_t::InvalidS:
+      case reason_t::Banned:
         return;
       default:
         ex.throw_ex<std::logic_error>("invalid termination reason.");
     }
   }
 
-  void check_params(const tini2p::exception::Exception& ex)
+  void check_params(const exception::Exception& ex)
   {
-    if (type_ != meta::block::TerminationID)
+    if (type_ != type_t::Termination)
       ex.throw_ex<std::logic_error>("invalid block type.");
 
-    if (size_ < meta::block::MinTermSize || size_ > meta::block::MaxTermSize)
+    if (size_ < MinTermLen || size_ > MaxTermLen)
       ex.throw_ex<std::length_error>("invalid block size.");
 
     check_reason(rsn_, ex);
   }
+
+  reason_t rsn_;
+  frames_t valid_frames_;
+  ad_t ad_;
 };
 }  // namespace data
 }  // namespace tini2p

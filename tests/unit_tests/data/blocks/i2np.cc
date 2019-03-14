@@ -31,8 +31,6 @@
 
 #include "src/data/blocks/i2np.h"
 
-namespace meta = tini2p::meta::block;
-
 using tini2p::data::I2NPBlock;
 
 struct I2NPBlockFixture
@@ -45,14 +43,14 @@ TEST_CASE_METHOD(
     "I2NPBlock has a block ID",
     "[block]")
 {
-  REQUIRE(block.type() == meta::I2NPMessageID);
+  REQUIRE(block.type() == I2NPBlock::Type::I2NP);
 }
 
 TEST_CASE_METHOD(I2NPBlockFixture, "I2NPBlock has a size", "[block]")
 {
-  REQUIRE(block.data_size() >= meta::MinI2NPSize);
-  REQUIRE(block.data_size() <= meta::MaxI2NPSize);
-  REQUIRE(block.size() == meta::HeaderSize + block.data_size());
+  REQUIRE(block.data_size() >= I2NPBlock::MinMsgLen);
+  REQUIRE(block.data_size() <= I2NPBlock::MaxMsgLen);
+  REQUIRE(block.size() == I2NPBlock::HeaderLen + block.data_size());
   REQUIRE(block.size() == block.buffer().size());
 }
 
@@ -76,9 +74,9 @@ TEST_CASE_METHOD(
   // deserialize from buffer
   REQUIRE_NOTHROW(block.deserialize());
 
-  REQUIRE(block.type() == meta::I2NPMessageID);
+  REQUIRE(block.type() == I2NPBlock::Type::I2NP);
   REQUIRE(block.msg_id() != 0);
-  REQUIRE(block.size() == meta::HeaderSize + block.data_size());
+  REQUIRE(block.size() == I2NPBlock::HeaderLen + block.data_size());
   REQUIRE(block.buffer().size() == block.size());
 }
 
@@ -91,10 +89,10 @@ TEST_CASE_METHOD(
   REQUIRE_NOTHROW(block.serialize());
 
   // invalidate the block ID
-  ++block.buffer()[meta::TypeOffset];
+  ++block.buffer()[I2NPBlock::TypeOffset];
   REQUIRE_THROWS(block.deserialize());
 
-  block.buffer()[meta::TypeOffset] -= 2;
+  block.buffer()[I2NPBlock::TypeOffset] -= 2;
   REQUIRE_THROWS(block.deserialize());
 }
 
@@ -107,10 +105,10 @@ TEST_CASE_METHOD(
   REQUIRE_NOTHROW(block.serialize());
 
   // invalidate the size 
-  tini2p::write_bytes(&block.buffer()[meta::SizeOffset], meta::MinI2NPSize - 1);
+  tini2p::write_bytes(&block.buffer()[I2NPBlock::SizeOffset], I2NPBlock::MinMsgLen - 1);
   REQUIRE_THROWS(block.deserialize());
 
-  tini2p::write_bytes(&block.buffer()[meta::SizeOffset], meta::MaxI2NPSize + 1);
+  tini2p::write_bytes(&block.buffer()[I2NPBlock::SizeOffset], I2NPBlock::MaxMsgLen + 1);
   REQUIRE_THROWS(block.deserialize());
 }
 
@@ -120,18 +118,18 @@ TEST_CASE_METHOD(
     "[block]")
 {
   using tini2p::time::now_s;
-  using boost::endian::big_uint32_t;
+  using expiration_t = I2NPBlock::expiration_t;
 
   // serialize a valid block
   REQUIRE_NOTHROW(block.serialize());
 
   // invalidate the expiration (at expiration)
   tini2p::write_bytes(
-      &block.buffer()[meta::ExpirationOffset], big_uint32_t(now_s()));
+      &block.buffer()[I2NPBlock::ExpirationOffset], expiration_t(now_s()));
   REQUIRE_THROWS(block.deserialize());
 
   // invalidate the expiration (past expiration)
   tini2p::write_bytes(
-      &block.buffer()[meta::ExpirationOffset], big_uint32_t(now_s() - 1));
+      &block.buffer()[I2NPBlock::ExpirationOffset], expiration_t(now_s() - 1));
   REQUIRE_THROWS(block.deserialize());
 }

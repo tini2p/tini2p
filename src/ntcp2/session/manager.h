@@ -43,7 +43,7 @@ namespace ntcp2
 /// @brief Class for managing NTCP2 sessions
 class SessionManager
 {
-  tini2p::data::Info* info_;
+  tini2p::data::Info::shared_ptr info_;
   std::unique_ptr<SessionListener> listener_, listener_v6_;
   std::vector<std::unique_ptr<Session<Initiator>>> out_sessions_;
   std::mutex out_sessions_mutex_;
@@ -55,7 +55,7 @@ class SessionManager
   /// @param ipv6_ep IPv6 Local ASIO endpoint to listen for connections
   /// @detail Sessions will be created for both IPv4 and IPv6 routers
   SessionManager(
-      tini2p::data::Info* info,
+      tini2p::data::Info::shared_ptr info,
       const boost::asio::ip::tcp::endpoint& ipv4_ep,
       const boost::asio::ip::tcp::endpoint& ipv6_ep)
       : info_(info)
@@ -83,7 +83,7 @@ class SessionManager
   /// @detail Local endpoint can be either IPv4 or IPv6
   /// @detail Incoming sessions will only be created for either IPv4 or IPv6 routers
   /// @detail Outgoing sessions will be created for both IPv4 and IPv6 routers
-  SessionManager(tini2p::data::Info* info, const boost::asio::ip::tcp::endpoint& ep)
+  SessionManager(tini2p::data::Info::shared_ptr info, const boost::asio::ip::tcp::endpoint& ep)
       : info_(info)
   {
     using listener_t = decltype(listener_)::element_type;
@@ -145,7 +145,7 @@ class SessionManager
   /// @return Non-owning ointer to newly created session
   /// @throw Invalid argument if dest is null
   /// @throw Runtime error if session already exists for given destination
-  decltype(out_sessions_)::value_type::pointer session(tini2p::data::Info* dest)
+  decltype(out_sessions_)::value_type::pointer session(data::Info::shared_ptr dest)
   {
     using session_t = decltype(out_sessions_)::value_type::element_type;
 

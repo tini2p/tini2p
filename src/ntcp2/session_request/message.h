@@ -61,7 +61,7 @@ struct SessionRequestMessage
     TimestampOffset = 8
   };
 
-  enum : std::uint16_t
+  enum
   {
     OptionsSize = 16,
     XSize = crypto::X25519::PublicKeyLen,

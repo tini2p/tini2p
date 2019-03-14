@@ -41,7 +41,7 @@ namespace ntcp2
 /// @brief Listen for incoming sessions on a given local endpoint
 class SessionListener
 {
-  tini2p::data::Info* info_;
+  tini2p::data::Info::shared_ptr info_;
   boost::asio::io_context ctx_;
   boost::asio::ip::tcp::acceptor acc_;
   std::vector<std::unique_ptr<Session<Responder>>> sessions_;
