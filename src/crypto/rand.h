@@ -42,7 +42,8 @@ namespace crypto
 /// @param size Size of data buffer
 inline void RandBytes(uint8_t* data, const std::size_t size)
 {
-  randombytes_buf(data, size);
+  if (data)
+    randombytes_buf(data, size);
 }
 
 /// @brief Generate a random block of data with OS RNG
@@ -51,10 +52,13 @@ inline void RandBytes(uint8_t* data, const std::size_t size)
 template <class Buffer>
 inline void RandBytes(Buffer& buf)
 {
-  randombytes_buf(buf.data(), buf.size());
+  if (buf.data())
+    randombytes_buf(buf.data(), buf.size());
 }
 
-inline decltype(auto) RandInRange(const std::uint32_t min, const std::uint32_t max)
+inline decltype(auto) RandInRange(
+    const std::uint32_t min = std::numeric_limits<std::uint32_t>::min(),
+    const std::uint32_t max = std::numeric_limits<std::uint32_t>::max())
 {
   std::uint32_t rand(0);
   do

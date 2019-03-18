@@ -56,8 +56,8 @@ class Session
 {
  public:
   using state_t = NoiseHandshakeState;  //< Handshake state alias
-  using info_ptr = data::Info::shared_ptr;  //< RouterInfo trait alias
-  using dest_ptr = data::Info::shared_ptr;  //< Destination trait alias
+  using info_t = data::Info;  //< RouterInfo trait alias
+  using dest_t = data::Info;  //< Destination trait alias
   using obfse_t = crypto::AES;  //< Obfse crypto trait alias
   using key_t = SessionKey;  //< Key trait alias
 
@@ -101,38 +101,33 @@ class Session
   /// @brief Create a session for a destination
   /// @param dest RouterInfo for remote destination
   /// @param info RouterInfo for local router
-  Session(dest_ptr dest, info_ptr info)
+  Session(dest_t::shared_ptr dest, info_t::shared_ptr info)
       : dest_(dest),
         info_(info),
         ctx_(),
         sock_(ctx_),
-        sco_msg_(new confirmed_msg_t(
-            info_,
-            crypto::RandInRange(
-                confirmed_msg_t::MinPaddingSize,
-                confirmed_msg_t::MaxPaddingSize))),
         ready_(false)
   {
     const exception::Exception ex{"Session", __func__};
 
-    if (!dest || !info)
+    if (!dest_ || !info_)
       ex.throw_ex<std::invalid_argument>("null remote or local RouterInfo.");
+
+    sco_msg_.reset(new confirmed_msg_t(
+        info_,
+        crypto::RandInRange(
+            confirmed_msg_t::MinPaddingSize,
+            confirmed_msg_t::MaxPaddingSize - info_->size())));
 
     noise::init_handshake<Initiator>(&state_, ex);
 
-    const auto& b64_key = dest_->options().entry(std::string("s"));
     std::copy_n(
-        crypto::Base64::Decode(
-            reinterpret_cast<const char*>(b64_key.data()), b64_key.size())
-            .data(),
+        crypto::Base64::Decode(dest_->options().entry(std::string("s"))).data(),
         remote_key_.key.size(),
         remote_key_.key.data());
 
-    const auto& b64_iv = dest_->options().entry(std::string("i"));
     std::copy_n(
-        crypto::Base64::Decode(
-            reinterpret_cast<const char*>(b64_iv.data()), b64_iv.size())
-            .data(),
+        crypto::Base64::Decode(dest_->options().entry(std::string("i"))).data(),
         aes_iv_.size(),
         aes_iv_.data());
   }
@@ -140,23 +135,20 @@ class Session
   /// @brief Create a session for an incoming connection
   /// @param dest RouterInfo for remote destination
   /// @param info RouterInfo for local router
-  Session(info_ptr info, socket_t socket)
+  Session(info_t::shared_ptr info, socket_t socket)
       : info_(info),
         sock_(std::move(socket)),
         ready_(false)
   {
     const exception::Exception ex{"Session", __func__};
 
-    if (!info)
+    if (!info_)
       ex.throw_ex<std::invalid_argument>("null RouterInfo.");
 
     noise::init_handshake<Responder>(&state_, ex);
 
-    const auto& b64_iv = info_->options().entry(std::string("i"));
     std::copy_n(
-        crypto::Base64::Decode(
-            reinterpret_cast<const char*>(b64_iv.data()), b64_iv.size())
-            .data(),
+        crypto::Base64::Decode(info_->options().entry(std::string("i"))).data(),
         aes_iv_.size(),
         aes_iv_.data());
   }
@@ -338,15 +330,20 @@ class Session
 
   void DoSessionRequest()
   {
+    using ecies_x25519_hmac_t = info_t::identity_t::ecies_x25519_hmac_t;
+    using ecies_x25519_blake_t = info_t::identity_t::ecies_x25519_blake_t;
+
     const exception::Exception ex{"Session", __func__};
+
+    const auto get_id_keys = [](const auto& c) { return c.id_keys(); };
 
     if (std::is_same<TRole, Initiator>::value)
       {
-        request_impl_t srq(
-            state_, dest_->identity().hash(), aes_iv_);
-
-        srq.kdf().set_local_keys(info_->id_keys());
-        srq.kdf().Derive(remote_key_.key);
+        const auto& ident = dest_->identity();
+        request_impl_t srq(state_, ident.hash(), aes_iv_);
+        auto& kdf = srq.kdf();
+        kdf.set_local_keys(boost::apply_visitor(get_id_keys, ident.crypto()));
+        kdf.Derive(remote_key_.key);
 
         std::lock_guard<std::mutex> lg(msg_mutex_);
         srq_msg_ = std::make_unique<request_msg_t>(
@@ -393,18 +390,20 @@ class Session
               srq_xfer_ += bytes_transferred;
               return request_msg_t::NoisePayloadSize - srq_xfer_;
             },
-            [this, ex](
+            [this, get_id_keys, ex](
                 const boost::system::error_code& ec,
                 const std::size_t bytes_transferred) {
               if (ec && ec != boost::asio::error::eof)
                 ex.throw_ex<std::runtime_error>(ec.message().c_str());
 
-              request_impl_t srq(state_, info_->identity().hash(), aes_iv_);
-
+              const auto& ident = info_->identity();
+              request_impl_t srq(state_, ident.hash(), aes_iv_);
               auto& kdf = srq.kdf();
-              kdf.set_local_keys(info_->id_keys());
-              kdf.Derive();
+              kdf.set_local_keys(
+                  boost::apply_visitor(get_id_keys, ident.crypto()));
+              srq.kdf().Derive();
               srq.ProcessMessage(*srq_msg_);
+
               if (srq_msg_->options.pad_len)
                 {
                   srq_xfer_ = 0;
@@ -603,8 +602,8 @@ class Session
     else
       {
         std::lock_guard<std::mutex> lg(msg_mutex_);
-        sco_msg_ = std::make_unique<confirmed_msg_t>(
-            confirmed_msg_t::PartOneSize + srq_msg_->options.m3p2_len);
+        sco_msg_.reset(new confirmed_msg_t(
+            confirmed_msg_t::PartOneSize + srq_msg_->options.m3p2_len));
 
         boost::asio::async_read(
             sock_,
@@ -629,15 +628,13 @@ class Session
 
               // get static key from Alice's RouterInfo
               dest_ = sco_msg_->info_block.info();
-              auto& b64_s = dest_->options().entry(std::string("s"));
-              auto s = crypto::Base64::Decode(reinterpret_cast<const char*>(b64_s.data()), b64_s.size());
+              const crypto::SecBytes s(crypto::Base64::Decode(dest_->options().entry(std::string("s"))));
 
               // get Alice's static key from first frame
               noise::get_remote_public_key(state_, remote_key_.key, ex);
 
               // check static key from first frame matches RouterInfo static key, see spec
               const bool match = std::equal(s.begin(), s.end(), remote_key_.key.begin());
-              crypto::RandBytes(s);  // overwrite key, no longer needed
 
               if (!match)
                 ex.throw_ex<std::logic_error>("static key does not match initial SessionRequest key.");
@@ -785,8 +782,8 @@ class Session
   }
 
   state_t* state_;
-  dest_ptr dest_;
-  info_ptr info_;
+  dest_t::shared_ptr dest_;
+  info_t::shared_ptr info_;
   key_t remote_key_, connect_key_;
   obfse_t::iv_t aes_iv_;
   context_t ctx_;

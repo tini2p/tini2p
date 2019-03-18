@@ -29,9 +29,9 @@
 
 #include <catch2/catch.hpp>
 
-#include "src/crypto/signing.h"
+#include "src/crypto/eddsa/eddsa_sha512.h"
 
-using EdDSA = tini2p::crypto::Signing<tini2p::crypto::EdDSASha512>;
+using EdDSA = tini2p::crypto::EdDSASha512;
 
 struct EdDSASha512Fixture
 {
@@ -76,9 +76,14 @@ TEST_CASE_METHOD(
     "EdDSASha512 has valid key lengths",
     "[eddsa]")
 {
-  REQUIRE(eddsa.pubkey_len() == EdDSA::PublicKeyLen);
-  REQUIRE(eddsa.pvtkey_len() == EdDSA::PrivateKeyLen);
-  REQUIRE(eddsa.sig_len() == EdDSA::SignatureLen);
+  REQUIRE(EdDSA::PublicKeyLen == 32);
+  REQUIRE(EdDSA::PrivateKeyLen == 64);
+  REQUIRE(EdDSA::SignatureLen == 64);
+
+  REQUIRE(eddsa.pubkey().size() == EdDSA::PublicKeyLen);
+  REQUIRE(EdDSA::pubkey_t().size() == EdDSA::PublicKeyLen);
+  REQUIRE(EdDSA::pvtkey_t().size() == EdDSA::PrivateKeyLen);
+  REQUIRE(EdDSA::signature_t().size() == EdDSA::SignatureLen);
 }
 
 TEST_CASE_METHOD(EdDSASha512Fixture, "EdDSASha512 signs a message", "[eddsa]")

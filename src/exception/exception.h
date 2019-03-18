@@ -43,26 +43,48 @@ namespace exception
 struct Exception
 {
   /// @brief Throw an exception of type Ex
-  /// @param message Exception message to throw
+  /// @param message Exception message (c-string)
   /// @param err_n Error number (default none)
   template <class Ex>
   void throw_ex(const char* message, const int err_n = 0) const
   {
-    std::string noise_err;
+    if (!message)
+      throw_ex<std::invalid_argument>(
+          std::string("null exception message."), err_n);
+
+    throw_ex<Ex>(std::string(message), err_n);
+  }
+
+  /// @brief Throw an exception of type Ex
+  /// @param message Exception message (string)
+  /// @param err_n Error number (default none)
+  template <class Ex>
+  void throw_ex(const std::string& message, const int err_n = 0) const
+  {
+    std::vector<char> noise_err;
     if (err_n)
       {
-        std::array<char, 30> err_msg;  // big enough to hold any error message
-        noise_strerror(err_n, err_msg.data(), err_msg.size());
-        noise_err.append(err_msg.begin(), err_msg.end());
+        noise_err.resize(64);
+        noise_strerror(err_n, noise_err.data(), noise_err.size());
+
+        const auto err_end = noise_err.end();
+        const auto null_it = std::find(noise_err.begin(), err_end, char());
+        if (null_it != err_end)
+          {
+            noise_err.erase(null_it + 1, err_end);
+            noise_err.shrink_to_fit();
+          }
       }
 
     throw Ex(
-        class_t + ": " + func + ": " + std::string(message)
-        + (noise_err.empty() ? "" : ": " + noise_err));
+        class_str + ": " + (func_str.empty() ? "" : func_str + ": ") + message
+        + (noise_err.empty()
+               ? ""
+               : ": " + std::string(noise_err.begin(), noise_err.end())));
   }
 
-  std::string class_t;
-  std::string func;
+  std::string class_str;
+  std::string func_str;
 };
 
 }  // namespace exception

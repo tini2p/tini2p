@@ -61,6 +61,9 @@ TEST_CASE_METHOD(
 
   REQUIRE_NOTHROW(dp_initiator->Write(dp_message));
   REQUIRE_NOTHROW(dp_responder->Read(dp_message));
+
+  REQUIRE_NOTHROW(dp_responder->Write(dp_message));
+  REQUIRE_NOTHROW(dp_initiator->Read(dp_message));
 }
 
 TEST_CASE_METHOD(
@@ -88,69 +91,77 @@ TEST_CASE_METHOD(
 
 TEST_CASE_METHOD(
     DataPhaseFixture,
-    "DataPhase initiator and responder reject invalid MAC",
+    "DataPhase responder rejects invalid MAC",
     "[dp]")
 {
-  dp_message.add_block(DateTimeBlock());
+  using Catch::Matchers::Equals;
+  using vec = std::vector<std::uint8_t>;
 
+  dp_message.add_block(DateTimeBlock());
+  dp_message.serialize();
+
+  const auto& buf = dp_message.buffer();
+  vec exp_msg(buf.begin(), buf.end());
   REQUIRE_NOTHROW(dp_initiator->Write(dp_message));
 
   // invalidate ciphertext
-  crypto::RandBytes(dp_message.buffer());
-  REQUIRE_THROWS(dp_responder->Read(dp_message));
-
-  REQUIRE_NOTHROW(dp_responder->Write(dp_message));
-
-  // invalidate ciphertext
-  crypto::RandBytes(dp_message.buffer());
-  REQUIRE_THROWS(dp_initiator->Read(dp_message));
+  dp_message.buffer().zero();
+  REQUIRE_NOTHROW(dp_responder->Read(dp_message));
+  REQUIRE_THAT(static_cast<vec>(buf), !Equals(exp_msg));
 }
 
 TEST_CASE_METHOD(
     DataPhaseFixture,
-    "DataPhase initiator and responder reject invalid block order",
+    "DataPhase initiator rejects invalid MAC",
+    "[dp]")
+{
+  using Catch::Matchers::Equals;
+  using vec = std::vector<std::uint8_t>;
+
+  dp_message.add_block(DateTimeBlock());
+  dp_message.serialize();
+
+  const auto& buf = dp_message.buffer();
+  const vec exp_msg(buf.begin(), buf.end());
+  REQUIRE_NOTHROW(dp_responder->Write(dp_message));
+
+  // invalidate ciphertext
+  dp_message.buffer().zero();
+  REQUIRE_NOTHROW(dp_initiator->Read(dp_message));
+  REQUIRE_THAT(static_cast<vec>(buf), !Equals(exp_msg));
+}
+
+TEST_CASE_METHOD(
+    DataPhaseFixture,
+    "DataPhase message rejects invalid block order",
     "[dp]")
 {
   // invalid order, padding must be last block
   dp_message.add_block(PaddingBlock(3));
   REQUIRE_THROWS(dp_message.add_block(DateTimeBlock()));
 
-  REQUIRE_THROWS(dp_initiator->Write(dp_message));
-  REQUIRE_THROWS(dp_responder->Write(dp_message));
-
   dp_message.clear_blocks();
 
   // invalid order, termination must only be followed by padding block
   dp_message.add_block(TerminationBlock());
   REQUIRE_THROWS(dp_message.add_block(DateTimeBlock()));
-
-  REQUIRE_THROWS(dp_initiator->Write(dp_message));
-  REQUIRE_THROWS(dp_responder->Write(dp_message));
 }
 
 TEST_CASE_METHOD(
     DataPhaseFixture,
-    "DataPhase initiator and responder reject invalid size",
+    "DataPhase message rejects invalid size",
     "[dp]")
 {
+  using Catch::Matchers::Equals;
+  using vec = std::vector<std::uint8_t>;
+
   // add blocks to make message oversized
   I2NPBlock i2np_msg;
   i2np_msg.resize_message(I2NPBlock::MaxMsgLen);
-
   dp_message.add_block(std::move(i2np_msg));
 
-  REQUIRE_THROWS(dp_message.add_block(PaddingBlock(PaddingBlock::MaxPaddingLen)));
-
-  REQUIRE_THROWS(dp_initiator->Write(dp_message));
-
-  dp_message.clear_blocks();
-
-  dp_message.add_block(DateTimeBlock());
-  REQUIRE_NOTHROW(dp_initiator->Write(dp_message));
-
-  // invalidate the size in the raw message buffer
-  crypto::RandBytes(dp_message.buffer());
-  REQUIRE_THROWS(dp_responder->Read(dp_message));
+  REQUIRE_THROWS(
+      dp_message.add_block(PaddingBlock(PaddingBlock::MaxPaddingLen)));
 }
 
 TEST_CASE_METHOD(

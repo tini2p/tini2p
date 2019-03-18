@@ -52,6 +52,7 @@ class Certificate
     CertTypeSize = 1,
     NullCertSize = 3,
     KeyCertSize = 7,
+    LengthLen = 2,
   };
 
   enum Offsets : std::uint8_t
@@ -87,6 +88,7 @@ class Certificate
     Gost512,
     RedDSA,
     XEdDSA,
+    SigningUnsupported = 65534,
     SigningReserved = 65535,
     // convenience definition
     EdDSA = EdDSASha512Ed25519,
@@ -100,6 +102,7 @@ class Certificate
     EciesP521,
     EciesX25519,
     EciesX25519Blake,
+    CryptoUnsupported = 65534,
     CryptoReserved = 65535
   };
 
@@ -120,9 +123,65 @@ class Certificate
         length(KeyCertSize),
         sign_type(sign_type_t::EdDSA),
         crypto_type(crypto_type_t::EciesX25519),
+        locally_unreachable_(false),
         buffer(KeyCertSize)
   {
     serialize();
+  }
+
+  /// @brief Create a certificate with given sign + crypto types
+  Certificate(
+      const sign_type_t sign_type_in,
+      const crypto_type_t crypto_type_in)
+      : cert_type(cert_type_t::KeyCert),
+        length(KeyCertSize),
+        sign_type(sign_type_in),
+        crypto_type(crypto_type_in),
+        locally_unreachable_(false),
+        buffer(KeyCertSize)
+  {
+    serialize();
+  }
+
+  /// @brief Create a certificate with given sign + crypto type info
+  Certificate(
+      const std::type_info& sign_type_info,
+      const std::type_info& crypto_type_info)
+      : cert_type(cert_type_t::KeyCert),
+        length(KeyCertSize),
+        locally_unreachable_(false),
+        buffer(KeyCertSize)
+  {
+    type_info_to_type(sign_type_info, crypto_type_info);
+
+    serialize();
+  }
+
+  /// @brief Convert signing + crypto type_info to sign + crypto types
+  void type_info_to_type(
+      const std::type_info& sign_type_info,
+      const std::type_info& crypto_type_info)
+  {
+    using eddsa_t = tini2p::crypto::EdDSASha512;
+    using reddsa_t = tini2p::crypto::RedDSASha512;
+    using xeddsa_t = tini2p::crypto::XEdDSASha512;
+
+    using ecies_x25519_hmac_t = tini2p::crypto::EciesX25519<tini2p::crypto::HmacSha256>;
+    using ecies_x25519_blake_t = tini2p::crypto::EciesX25519<tini2p::crypto::Blake2b>;
+
+    sign_type = sign_type_info == typeid(eddsa_t)
+                    ? sign_type_t::EdDSA
+                    : sign_type_info == typeid(reddsa_t)
+                          ? sign_type_t::RedDSA
+                          : sign_type_info == typeid(xeddsa_t)
+                                ? sign_type_t::XEdDSA
+                                : sign_type_t::SigningUnsupported;
+
+    crypto_type = crypto_type_info == typeid(ecies_x25519_hmac_t)
+                      ? crypto_type_t::EciesX25519
+                      : crypto_type_info == typeid(ecies_x25519_blake_t)
+                            ? crypto_type_t::EciesX25519Blake
+                            : crypto_type_t::CryptoUnsupported;
   }
 
   /// @brief Serialize the certificate to buffer
@@ -169,7 +228,7 @@ class Certificate
 
   /// @brief Get unreachable status
   /// @detail Identity/Destination is unreachable if cert has unsupported crypto
-  bool local_unreachable() const noexcept
+  constexpr bool locally_unreachable() const noexcept
   {
     return locally_unreachable_;
   }
@@ -184,10 +243,11 @@ class Certificate
       ex.throw_ex<std::runtime_error>("invalid certificate length.");
 
     if (!length)
-    {
-      std::cerr << "Router: Certificate: old unsupported cert type." << std::endl;
-      locally_unreachable_ = true;
-    }
+      {
+        std::cerr << "Router: Certificate: old unsupported cert type."
+                  << std::endl;
+        locally_unreachable_ = true;
+      }
 
     switch (crypto_type)
     {
@@ -201,9 +261,9 @@ class Certificate
 
     switch (sign_type)
     {
-      case Signing_t::EdDSA:
-      case Signing_t::RedDSA:
-      case Signing_t::XEdDSA:
+      case sign_type_t::EdDSA:
+      case sign_type_t::RedDSA:
+      case sign_type_t::XEdDSA:
         break;
       default:
         locally_unreachable_ = true;

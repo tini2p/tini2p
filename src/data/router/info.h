@@ -31,6 +31,7 @@
 #define SRC_DATA_ROUTER_INFO_H_
 
 #include <boost/asio.hpp>
+#include <boost/variant.hpp>
 
 #include "src/time.h"
 
@@ -54,16 +55,13 @@ namespace data
 class Info
 {
  public:
-  using identity_t = Identity;  //< Identity trait alias
-  using curve_t = identity_t::crypto_t::curve_t;  //< Elliptic curve trait alias
-  using signature_t = identity_t::signing_t::signature_t;  //< Signature trait alias
+  using identity_t = Identity;  //< Identity variant trait alias
   using date_t = std::uint64_t;  //< Date trait alias
   using addresses_t = std::vector<Address>;  //< Addresses trait alias
   using options_t = Mapping;  //< Options trait alias
   using transport_t = std::vector<std::uint8_t>;  //< Transport string trait alias
-  using id_keys_t = curve_t::keypair_t;  //< Static identity keys trait alias
-  using ep_keys_t = id_keys_t;  //< Ephemeral keys trait alias
   using iv_t = crypto::AES::iv_t;  //< IV trait alias
+  using signature_v = identity_t::signature_v;  //< Signature variant trait alias
   using buffer_t = crypto::SecBytes;  //< Buffer trait alias
 
   using pointer = Info*;  //< Non-owning pointer trait alias
@@ -91,8 +89,7 @@ class Info
       : identity_(),
         addresses_(),
         options_(),
-        transport_(ntcp2_transport.begin(), ntcp2_transport.end()),
-        id_keys_(curve_t::create_keys())
+        transport_(ntcp2_transport.begin(), ntcp2_transport.end())
   {
     crypto::RandBytes(iv_);
     update_id_pubkey();
@@ -119,8 +116,7 @@ class Info
         date_(tini2p::time::now_ms()),
         addresses_(std::forward<addresses_t>(addrs)),
         options_(std::forward<options_t>(opts)),
-        transport_(ntcp2_transport.begin(), ntcp2_transport.end()),
-        id_keys_(curve_t::create_keys())
+        transport_(ntcp2_transport.begin(), ntcp2_transport.end())
   {
     const exception::Exception ex{"RouterInfo", __func__};
 
@@ -130,6 +126,7 @@ class Info
       ex.throw_ex<std::length_error>("invalid size.");
 
     // update Noise options entries
+    crypto::RandBytes(iv_);
     update_id_pubkey();
     update_iv();
     options_.add(std::string("v"), v_);
@@ -137,16 +134,65 @@ class Info
     serialize();
   }
 
-  /// @brief Get a const reference to the Noise static identity keypair
-  const id_keys_t& id_keys() const noexcept
+  /// @brief Serialize RouterInfo data members to buffer
+  void serialize()
   {
-    return id_keys_;
+    buf_.resize(size());
+
+    BytesWriter<buffer_t> writer(buf_);
+
+    identity_.serialize();
+    writer.write_data(identity_.buffer());
+
+    date_ = tini2p::time::now_ms();
+    writer.write_bytes(date_);
+    writer.write_bytes<std::uint8_t>(addresses_.size());
+
+    for (auto& address : addresses_)
+      {
+        address.serialize();
+        writer.write_data(address.buffer);
+      }
+
+    // write zero peer-size, see spec
+    writer.write_bytes(std::uint8_t(0));
+
+    options_.serialize();
+    writer.write_data(options_.buffer());
+    
+    signature_ = identity_.Sign(writer.data(), writer.count());
+    boost::apply_visitor(
+        [&writer](const auto& s) { writer.write_data(s); }, signature_);
   }
 
-  /// @brief Get a const reference to the Noise ephemeral keypair
-  const ep_keys_t& ephemeral_keys() const noexcept
+  /// @brief Deserialize RouterInfo data members from buffer
+  void deserialize()
   {
-    return ep_keys_;
+    const exception::Exception ex{"RouterInfo", __func__};
+
+    BytesReader<buffer_t> reader(buf_);
+
+    ProcessIdentity(reader);
+    reader.read_bytes(date_);
+
+    ProcessAddresses(reader, ex);
+    reader.skip_bytes(PeerSizeLen);
+
+    ProcessOptions(reader, ex);
+
+    signature_ = boost::apply_visitor(
+        [&reader](const auto& val) {
+          typename std::decay_t<decltype(val)>::signature_t sig;
+          reader.read_data(sig);
+          return signature_v(std::move(sig));
+        },
+        identity_.signing());
+  }
+
+  bool Verify() const
+  {
+    return identity_.Verify(
+        buf_.data(), buf_.size() - identity_.sig_len(), signature_);
   }
 
   /// @brief Get a const reference to the RouterIdentity
@@ -230,7 +276,7 @@ class Info
   }
 
   /// @brief Get a const reference to the RouterInfo signature
-  const signature_t& signature() const noexcept
+  const signature_v& signature() const noexcept
   {
     return signature_;
   }
@@ -261,61 +307,12 @@ class Info
       address_size += address.size();
 
     return identity_.size() + sizeof(date_) + AddressSizeLen + address_size
-           + PeerSizeLen + options_.size() + signature_.size();
+           + PeerSizeLen + options_.size() + identity_.sig_len();
   }
 
-  /// @brief Serialize RouterInfo data members to buffer
-  void serialize()
-  {
-    buf_.resize(size());
-
-    tini2p::BytesWriter<buffer_t> writer(buf_);
-
-    identity_.serialize();
-    writer.write_data(identity_.buffer());
-
-    date_ = tini2p::time::now_ms();
-    writer.write_bytes(date_);
-    writer.write_bytes<std::uint8_t>(addresses_.size());
-
-    for (auto& address : addresses_)
-      {
-        address.serialize();
-        writer.write_data(address.buffer);
-      }
-
-    // write zero peer-size, see spec
-    writer.write_bytes(std::uint8_t(0));
-
-    options_.serialize();
-    writer.write_data(options_.buffer());
-
-    identity_.signing().Sign(buf_.data(), writer.count(), signature_);
-    writer.write_data(signature_);
-  }
-
-  /// @brief Deserialize RouterInfo data members from buffer
-  void deserialize()
-  {
-    const tini2p::exception::Exception ex{"RouterInfo", __func__};
-
-    tini2p::BytesReader<buffer_t> reader(buf_);
-
-    ProcessIdentity(reader);
-    reader.read_bytes(date_);
-
-    ProcessAddresses(reader, ex);
-    reader.skip_bytes(PeerSizeLen);
-
-    ProcessOptions(reader, ex);
-    reader.read_data(signature_);
-
-    identity_.signing().Verify(
-        buf_.data(), reader.count() - signature_.size(), signature_);
-  }
 
  private:
-  void ProcessIdentity(tini2p::BytesReader<buffer_t>& reader)
+  void ProcessIdentity(BytesReader<buffer_t>& reader)
   {
     auto& ident_buf = identity_.buffer();
     if (ident_buf.size() < Identity::DefaultSize)
@@ -323,10 +320,12 @@ class Info
 
     reader.read_data(ident_buf);
     identity_.deserialize();
+    update_id_pubkey();
   }
 
-  template <class Reader>
-  void ProcessAddresses(Reader& reader, const exception::Exception& ex)
+  void ProcessAddresses(
+      BytesReader<buffer_t>& reader,
+      const exception::Exception& ex)
   {
     std::uint8_t num_addresses;
     reader.read_bytes(num_addresses);
@@ -352,19 +351,19 @@ class Info
   }
 
   void ProcessOptions(
-      tini2p::BytesReader<buffer_t>& reader,
+      BytesReader<buffer_t>& reader,
       const exception::Exception& ex)
   {
     if (!reader.gcount())
       ex.throw_ex<std::logic_error>(
           "missing router options size, options, and signature.");
 
-    // read options size before deserializing
     std::uint16_t opt_size;
-    tini2p::read_bytes(buf_.data() + reader.count(), opt_size);
+    reader.read_bytes(opt_size);
 
     if (opt_size)
       {
+        reader.skip_back(sizeof(opt_size));
         options_.buffer().resize(sizeof(opt_size) + opt_size);
         reader.read_data(options_.buffer());
 
@@ -377,15 +376,17 @@ class Info
         if (version.empty() || version.front() != v_.front())
           ex.throw_ex<std::logic_error>("invalid NTCP2 version option.");
       }
-    else
-      reader.skip_bytes(sizeof(opt_size));
   }
 
   void update_id_pubkey()
   {
+    using b64_encode = tini2p::crypto::Crypto::Base64EncodePubkey;
+
     options_.add(
         std::string("s"),
-        crypto::Base64::Encode(id_keys_.pubkey.data(), id_keys_.pubkey.size()));
+        boost::apply_visitor(
+            [](const auto& c) { return crypto::Base64::Encode(c.pubkey()); },
+            identity_.crypto()));
   }
 
   void update_iv()
@@ -401,12 +402,10 @@ class Info
   std::mutex addresses_mutex_;
   options_t options_;
   transport_t transport_;
-  signature_t signature_;
+  signature_v signature_;
   const std::string v_{"2"};
 
   // Noise specific
-  id_keys_t id_keys_;
-  ep_keys_t ep_keys_;
   iv_t iv_;
 
   buffer_t buf_;

@@ -66,27 +66,52 @@ inline void write_bytes(It it, const Bytes& bytes)
 }
 
 /// @brief Utility class for reading/writing bytes
-template <class Buffer>
+template <class TBuffer>
 class Bytes
 {
   const bool const_;
 
  protected:
-  typename Buffer::const_iterator cbegin_, cend_, cpos_;
-  typename Buffer::iterator begin_, end_, pos_;
+  typename TBuffer::const_iterator cbegin_, cend_, cpos_;
+  typename TBuffer::iterator begin_, end_, pos_;
 
  public:
   /// @brief Create a Bytes reader from a buffer
-  /// @param buf Buffer to read from
-  explicit Bytes(const Buffer& buf)
+  /// @param buf TBuffer to read from
+  explicit Bytes(const TBuffer& buf)
       : const_(true), cbegin_(buf.begin()), cend_(buf.end()), cpos_(cbegin_)
   {
   }
 
   /// @brief Create a Bytes writer from a buffer
-  /// @param buf Buffer to read from
-  explicit Bytes(Buffer& buf) : const_(false), begin_(buf.begin()), end_(buf.end()), pos_(begin_)
+  /// @param buf TBuffer to read from
+  explicit Bytes(TBuffer& buf)
+      : const_(false), begin_(buf.begin()), end_(buf.end()), pos_(begin_)
   {
+  }
+
+  /// @brief Get a const pointer to the beginning of the buffer
+  decltype(auto) data() const noexcept
+  {
+    if (cbegin_ == cend_)
+      return typename TBuffer::const_pointer(nullptr);
+
+    return &(*cbegin_);
+  }
+
+  /// @brief Get a non-const pointer to the beginning of the buffer
+  decltype(auto) data() noexcept
+  {
+    if (begin_ == end_)
+      return typename TBuffer::pointer(nullptr);
+
+    return &(*begin_);
+  }
+
+  /// @brief Get a non-const iterator to the beginning of the buffer
+  decltype(cbegin_) begin() const noexcept
+  {
+    return cbegin_;
   }
 
   /// @brief Get a non-const iterator to the beginning of the buffer
@@ -205,14 +230,14 @@ class Bytes
     if (const_)
       {
         if (cpos_ - size < cbegin_)
-          ex.throw_ex<std::length_error>("position overflows buffer.");
+          ex.throw_ex<std::length_error>("position underflows buffer.");
 
         cpos_ -= size;
       }
     else
       {
-        if (pos_ - size > begin_)
-          ex.throw_ex<std::length_error>("position overflows buffer.");
+        if (pos_ - size < begin_)
+          ex.throw_ex<std::length_error>("position underflows buffer.");
 
         pos_ -= size;
       }

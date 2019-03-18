@@ -264,8 +264,11 @@ class DataPhase
     if (deobfs_len)
       kdf_.ProcessLength(length, dir);
 
-    if (length - crypto::Poly1305::DigestLen <= 0)
-      return;
+    if ((std::int16_t)(length - crypto::Poly1305::DigestLen) <= 0)
+      {
+        std::cerr << "DataPhase: null message." << std::endl;
+        return;
+      }
 
     if (length > message_t::MaxLen - message_t::SizeLen)
       ex.throw_ex<std::length_error>("invalid message size.");

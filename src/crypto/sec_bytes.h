@@ -46,7 +46,7 @@ class SecBase
  protected:
   Buffer buf_;
 
-  using buffer_t = decltype(buf_);
+  using buffer_t = Buffer;
 
   SecBase() : buf_() {}
 
@@ -90,6 +90,12 @@ class SecBase
 
   ~SecBase()
   {
+    zero();
+  }
+
+  /// @brief Zero-fill the secure buffer
+  void zero()
+  {
     if (buf_.data())
       sodium_memzero(buf_.data(), buf_.size());
   }
@@ -107,25 +113,25 @@ class SecBase
   }
 
   /// @brief Get a non-const iterator to the beginning of the buffer
+  const_iterator begin() const noexcept
+  {
+    return buf_.begin();
+  }
+
+  /// @brief Get a non-const iterator to the beginning of the buffer
   iterator begin() noexcept
   {
     return buf_.begin();
   }
 
   /// @brief Get a non-const iterator to the end of the buffer
-  iterator end() noexcept
+  const_iterator end() const noexcept
   {
     return buf_.end();
   }
 
-  /// @brief Get a non-const iterator to the beginning of the buffer
-  const_iterator begin() const noexcept
-  {
-    return buf_.begin();
-  }
-
   /// @brief Get a non-const iterator to the end of the buffer
-  const_iterator end() const noexcept
+  iterator end() noexcept
   {
     return buf_.end();
   }
@@ -140,6 +146,38 @@ class SecBase
   const_iterator cend() const noexcept
   {
     return buf_.end();
+  }
+
+  /// @brief Get a const reference to the first value in the buffer
+  decltype(auto) front() const noexcept
+  {
+    return buf_.front();
+  };
+
+  /// @brief Get a non-const reference to the first value in the buffer
+  decltype(auto) front() noexcept
+  {
+    return buf_.front();
+  };
+
+  void clear()
+  {
+    buf_.clear();
+  }
+
+  /// @brief Get a the buffer size
+  size_type size() const noexcept
+  {
+    return buf_.size();
+  }
+
+  /// @brief Get empty status of the buffer
+  bool empty() const noexcept { return buf_.empty(); }
+
+  /// @brief Enable static_cast to the underlying buffer type
+  explicit operator const buffer_t&() const
+  {
+    return buf_;
   }
 
   /// @brief Get a non-const reference to the value at given buffer index
@@ -162,21 +200,6 @@ class SecBase
           .throw_ex<std::invalid_argument>("out-of-bounds access.");
 
     return buf_[idx];
-  }
-
-  /// @brief Get a the buffer size
-  size_type size() const noexcept
-  {
-    return buf_.size();
-  }
-
-  /// @brief Get empty status of the buffer
-  bool empty() const noexcept { return buf_.empty(); }
-
-  /// @brief Enable static_cast to the underlying buffer type
-  explicit operator const buffer_t&() const
-  {
-    return buf_;
   }
 };
 
@@ -238,8 +261,8 @@ class SecBytes : public SecBase<std::vector<std::uint8_t>>
   /// @param self_begin Begin inserting into the internal buffer at this iterator
   /// @param oth_begin Beginning of the iterator range to insert
   /// @param oth_end Ending of the iterator range to insert
-  template <class InputIt>
-  void insert(iterator self_begin, InputIt oth_begin, InputIt oth_end)
+  template <class BegIt, class EndIt>
+  void insert(iterator self_begin, BegIt oth_begin, EndIt oth_end)
   {
     using s = SecBase<buffer_t>;
 
@@ -248,19 +271,28 @@ class SecBytes : public SecBase<std::vector<std::uint8_t>>
     const auto begin_it = SecBase<buffer_t>::buf_.begin();
     const auto end_it = SecBase<buffer_t>::buf_.end();
 
-    if (oth_begin >= begin_it && oth_begin <= end_it)
-      ex.throw_ex<std::invalid_argument>("invalid beginning of range.");
-
-    if (oth_end >= begin_it && oth_end <= end_it)
-      ex.throw_ex<std::invalid_argument>("invalid ending of range.");
-
-    if (oth_end < oth_begin)
+    if (oth_end <= oth_begin)
       ex.throw_ex<std::invalid_argument>("invalid range.");
 
     if (self_begin < begin_it || self_begin > end_it)
       ex.throw_ex<std::invalid_argument>("invalid starting position.");
 
     SecBase<buffer_t>::buf_.insert(self_begin, oth_begin, oth_end);
+  }
+
+  /// @brief Compare equality of two secure buffers
+  bool operator==(const SecBytes& oth) const
+  {
+    return std::equal(
+        SecBase<buffer_t>::buf_.begin(),
+        SecBase<buffer_t>::buf_.end(),
+        oth.begin());
+  }
+
+  /// @brief Compare inequality of two secure buffers
+  bool operator!=(const SecBytes& oth) const
+  {
+    return !(*this == oth);
   }
 };
 
@@ -344,6 +376,21 @@ class FixedSecBytes : public SecBase<std::array<std::uint8_t, N>>
       std::copy(begin, begin + N, SecBase<buffer_t>::buf_.begin());
     else
       std::copy(begin, end, SecBase<buffer_t>::buf_.begin());
+  }
+
+  /// @brief Compare equality of two secure buffers
+  bool operator==(const FixedSecBytes& oth) const
+  {
+    return std::equal(
+        SecBase<buffer_t>::buf_.begin(),
+        SecBase<buffer_t>::buf_.end(),
+        oth.begin());
+  }
+
+  /// @brief Compare inequality of two secure buffers
+  bool operator!=(const FixedSecBytes& oth) const
+  {
+    return !(*this == oth);
   }
 };
 }  // namespace crypto

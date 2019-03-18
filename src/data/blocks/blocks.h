@@ -191,7 +191,7 @@ class Blocks
     reader.read_data(buf);
 
     if (size)
-      boost::apply_visitor(deserialize, block);
+      boost::apply_visitor([](auto& b) { b.deserialize(); }, block);
   }
 
   /// @brief Serialize and write a block to a buffer writer
@@ -238,17 +238,17 @@ class Blocks
       const exception::Exception& ex)
   {
     if (type == Block::Type::DateTime)
-      block = data::DateTimeBlock();
+      block = std::move(data::DateTimeBlock());
     else if (type == Block::Type::I2NP)
-      block = data::I2NPBlock();
+      block = std::move(data::I2NPBlock());
     else if (type == Block::Type::Info)
-      block = data::InfoBlock();
+      block = std::move(data::InfoBlock());
     else if (type == Block::Type::Options)
-      block = data::OptionsBlock();
+      block = std::move(data::OptionsBlock());
     else if (type == Block::Type::Padding)
-      block = data::PaddingBlock();
+      block = std::move(data::PaddingBlock());
     else if (type == Block::Type::Termination)
-      block = data::TerminationBlock();
+      block = std::move(data::TerminationBlock());
     else
       ex.throw_ex<std::runtime_error>("invalid block type.");
   }

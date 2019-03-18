@@ -64,7 +64,7 @@ struct MockHandshake
             local_info,
             crypto::RandInRange(
                 confirmed_msg_t::MinPaddingSize,
-                confirmed_msg_t::MaxPaddingSize)),
+                confirmed_msg_t::MaxPaddingSize - local_info->size())),
         srq_message(
             sco_message.payload_size(),
             crypto::RandInRange(

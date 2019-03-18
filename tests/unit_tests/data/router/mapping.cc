@@ -126,7 +126,7 @@ TEST_CASE_METHOD(
   constexpr std::uint8_t num_entry = 3;
   for (std::uint8_t cnt = 0; cnt < num_entry; ++cnt)
     {
-      tini2p::crypto::RandBytes(min_kv.data(), min_kv.size());
+      min_kv[0] = cnt;
       map.add(min_kv, min_kv);
     }
 

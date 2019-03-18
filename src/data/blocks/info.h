@@ -175,7 +175,7 @@ class InfoBlock : public Block
     reader.read_bytes(size_);
     reader.read_bytes(flag_);
 
-    crypto::SecBytes ri_buf;
+    Info::buffer_t ri_buf;
     ri_buf.resize(size_ - FloodFlagLen);
     reader.read_data(ri_buf);
     info_.reset(new Info(std::move(ri_buf)));

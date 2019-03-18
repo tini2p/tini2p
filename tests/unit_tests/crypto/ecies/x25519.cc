@@ -29,15 +29,13 @@
 
 #include <catch2/catch.hpp>
 
-#include "src/crypto/crypto.h"
 #include "src/crypto/ecies/x25519.h"
 
-using tini2p::crypto::Crypto;
 using tini2p::crypto::HmacSha256;
 using tini2p::crypto::X25519;
 using tini2p::crypto::EciesX25519;
 
-using Ecies = Crypto<EciesX25519<HmacSha256>>;
+using Ecies = EciesX25519<HmacSha256>;
 
 struct EciesX25519Fixture
 {
@@ -51,9 +49,10 @@ TEST_CASE_METHOD(
     "EciesX25519 has valid key lengths",
     "[ecies_x25519]")
 {
-  REQUIRE(ecies.pubkey_len() == X25519::PublicKeyLen);
-  REQUIRE(ecies.pvtkey_len() == X25519::PrivateKeyLen);
-  REQUIRE(ecies.shrkey_len() == X25519::SharedKeyLen);
+  REQUIRE(ecies.pubkey().size() == X25519::PublicKeyLen);
+  REQUIRE(Ecies::pubkey_t().size() == X25519::PublicKeyLen);
+  REQUIRE(Ecies::pvtkey_t().size() == X25519::PrivateKeyLen);
+  REQUIRE(Ecies::shrkey_t().size() == X25519::SharedKeyLen);
 }
 
 TEST_CASE_METHOD(
@@ -61,12 +60,12 @@ TEST_CASE_METHOD(
     "EciesX25519 encrypts when remote public keys are set",
     "[ecies_x25519]")
 {
-  Ecies::message_t msg(17);
-  Ecies::ciphertext_t cph;
+  tini2p::crypto::SecBytes msg(17);
+  tini2p::crypto::SecBytes cph;
 
   Ecies::keypair_t r_id_keys(Ecies::curve_t::create_keys()), r_ep_keys; // remote public keys
 
-  REQUIRE_NOTHROW(Ecies::curve_t::DeriveEphemeralKeys<Ecies::impl_t::hmac_t>(
+  REQUIRE_NOTHROW(Ecies::curve_t::DeriveEphemeralKeys<Ecies::hmac_t>(
       r_id_keys, r_ep_keys));
 
   Ecies e_with_pub(r_id_keys.pubkey, r_ep_keys.pubkey);

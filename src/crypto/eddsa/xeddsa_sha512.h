@@ -48,8 +48,19 @@ namespace crypto
 /// @brief XEdDSASha512 implementation
 struct XEdDSASha512 : public X25519
 {
-  /// @brief Create an EdDSASha512 signer with a private key
-  /// @param sk EdDSASha512 private key
+  /// @brief Default ctor, creates new keypair
+  XEdDSASha512()
+  {
+    rekey(create_keys());
+  }
+
+  XEdDSASha512(const XEdDSASha512& oth)
+      : sk_(std::make_unique<pvtkey_t>(*(oth.sk_))), pk_(oth.pk_)
+  {
+  }
+
+  /// @brief Create an XEdDSASha512 signer with a private key
+  /// @param sk XEdDSASha512 private key
   explicit XEdDSASha512(pvtkey_t sk)
   {
     rekey(std::forward<pvtkey_t>(sk));
@@ -66,10 +77,16 @@ struct XEdDSASha512 : public X25519
     rekey(std::forward<keypair_t>(keys));
   }
 
-  inline void Sign(
+  void operator=(const XEdDSASha512& oth)
+  {
+    sk_ = std::make_unique<pvtkey_t>(*(oth.sk_));
+    pk_ = oth.pk_;
+  }
+
+  void Sign(
       message_t::const_pointer msg,
       message_t::size_type msg_len,
-      signature_t& sig)
+      signature_t& sig) const
   {
     const exception::Exception ex{"XEdDSA", __func__};
 
@@ -82,10 +99,10 @@ struct XEdDSASha512 : public X25519
     ex.throw_ex<std::runtime_error>("unimplemented.");
   }
 
-  inline bool Verify(
+  bool Verify(
       message_t::const_pointer msg,
       message_t::size_type msg_len,
-      const signature_t& sig)
+      const signature_t& sig) const
   {
     const exception::Exception ex{"XEdDSA", __func__};
 
@@ -120,6 +137,16 @@ struct XEdDSASha512 : public X25519
   {
     pk_ = std::forward<pubkey_t>(k.pubkey);
     sk_ = std::make_unique<pvtkey_t>(k.pvtkey);
+  }
+
+  const pubkey_t& pubkey() const noexcept
+  {
+    return pk_;
+  }
+
+  pubkey_t& pubkey() noexcept
+  {
+    return pk_;
   }
 
  private:

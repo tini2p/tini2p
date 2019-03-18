@@ -43,12 +43,8 @@ using namespace tini2p::ntcp2;
 struct SessionFixture
 {
   SessionFixture()
-      : host(
-            boost::asio::ip::tcp::v4(),
-            static_cast<std::uint16_t>(crypto::RandInRange(9111, 10135))),
-        host_v6(
-            boost::asio::ip::tcp::v6(),
-            static_cast<std::uint16_t>(crypto::RandInRange(9111, 10135))),
+      : host(boost::asio::ip::tcp::v4(), crypto::RandInRange(9111, 10135)),
+        host_v6(boost::asio::ip::tcp::v6(), crypto::RandInRange(9111, 10135)),
         dest(new tini2p::data::Info(
             tini2p::data::Identity(),
             std::vector<tini2p::data::Address>{
@@ -75,16 +71,6 @@ struct SessionFixture
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
   }
 
-  void InitializeSession(const meta::IP_t proto)
-  {
-    REQUIRE_NOTHROW(init.Start(proto));
-    REQUIRE_NOTHROW(init.Wait());
-    REQUIRE(init.ready());
-
-    REQUIRE_NOTHROW(
-        remote = manager.listener(proto)->session(info->id_keys().pubkey));
-  }
-
   boost::asio::ip::tcp::endpoint host, host_v6;
   tini2p::data::Info::shared_ptr dest, info;
   Session<Initiator> init;
@@ -92,36 +78,6 @@ struct SessionFixture
   SessionManager manager;
   DataPhaseMessage msg;
 };
-
-TEST_CASE_METHOD(
-    SessionFixture,
-    "IPv4 Session writes and reads after successful connection",
-    "[session]")
-{
-  InitializeSession(meta::IP_t::v4);
-
-  REQUIRE(remote);
-
-  REQUIRE_NOTHROW(init.Write(msg));
-  REQUIRE_NOTHROW(remote->Read(msg));
-
-  REQUIRE_NOTHROW(remote->Write(msg));
-  REQUIRE_NOTHROW(init.Read(msg));
-}
-
-TEST_CASE_METHOD(
-    SessionFixture,
-    "IPv6 Session writes and reads after successful connection",
-    "[session]")
-{
-  InitializeSession(meta::IP_t::v6);
-
-  REQUIRE_NOTHROW(init.Write(msg));
-  REQUIRE_NOTHROW(remote->Read(msg));
-
-  REQUIRE_NOTHROW(remote->Write(msg));
-  REQUIRE_NOTHROW(init.Read(msg));
-}
 
 TEST_CASE_METHOD(
     SessionFixture,
@@ -136,7 +92,11 @@ TEST_CASE_METHOD(
   REQUIRE(mgr_init->ready());
 
   auto* remote_v6 =
-      manager.listener(meta::IP_t::v6)->session(dest->id_keys().pubkey);
+      manager.listener(meta::IP_t::v6)
+          ->session(boost::get<crypto::EciesX25519<crypto::HmacSha256>>(
+                        dest->identity().crypto())
+                        .id_keys()
+                        .pubkey);
 
   REQUIRE(remote_v6);
   REQUIRE_NOTHROW(remote_v6->Wait());
@@ -188,6 +148,7 @@ TEST_CASE_METHOD(
   REQUIRE_THROWS(manager.session(nullptr));
 }
 
+// TODO(tini2p): fix connection/session blacklisting
 TEST_CASE_METHOD(
     SessionFixture,
     "SessionManager rejects new connection for already existing session",

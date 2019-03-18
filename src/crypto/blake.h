@@ -54,6 +54,8 @@ class Blake2b
     KeyLen = 32,
     MinKeyOutLen = 16,
     MaxKeyOutLen = 64,
+    MinKeyMaterialLen = KeyLen,
+    MaxKeyMaterialLen = 64,
     DefaultContextLen = 8,
     MaxContextLen = 16,  //< CString[16], based on libsodium
   };
@@ -65,9 +67,56 @@ class Blake2b
   using key_t = FixedSecBytes<KeyLen>;  //< Key trait alias
 
   /// @brief Generate a new subkey from a given master key
+  /// @tparam N Size of the fixed-length output buffer
   /// @param key_out Output buffer for the resulting subkey
   /// @param nonce Counter-based nonce
-  /// @param ctx BLAKE context string for unique KDF applications
+  /// @param ctx Blake2b context string for unique KDF applications
+  /// @param data Input data to hash
+  /// @param key_in Master key buffer
+  /// @throw Length errors for invalid key lengths
+  template <std::size_t N>
+  static void Hash(
+      FixedSecBytes<N>& key_out,
+      key_material_t::const_pointer data_ptr,
+      const key_material_t::size_type data_len,
+      const key_t& key_in,
+      const salt_t& salt = {},
+      const context_t& ctx = context_t())
+  {
+    Hash(
+        key_out.data(),
+        key_out.size(),
+        data_ptr,
+        data_len,
+        key_in.data(),
+        key_in.size(),
+        salt,
+        ctx);
+  }
+
+  template <std::size_t N>
+  static void Hash(
+      FixedSecBytes<N>& key_out,
+      key_t::const_pointer key_in,
+      const key_t::size_type key_in_len,
+      const salt_t& salt = {},
+      const context_t& ctx = context_t())
+  {
+    Hash(
+        key_out.data(),
+        key_out.size(),
+        nullptr,
+        0,
+        key_in,
+        key_in_len,
+        salt,
+        ctx);
+  }
+
+  /// @brief Generate a new subkey from a given master key
+  /// @param key_out Output buffer for the resulting subkey
+  /// @param nonce Counter-based nonce
+  /// @param ctx Blake2b context string for unique KDF applications
   /// @param data Input data to hash
   /// @param key_in Master key buffer
   /// @throw Length errors for invalid key lengths
@@ -78,10 +127,29 @@ class Blake2b
       const salt_t& salt = {},
       const context_t& ctx = context_t())
   {
-    const exception::Exception ex{"Blake2b"};
+    Hash(
+        key_out.data(),
+        key_out.size(),
+        data.data(),
+        data.size(),
+        key_in.data(),
+        key_in.size(),
+        salt,
+        ctx);
+  }
 
-    auto ko_it = key_out.data();
-    const auto ko_size = key_out.size();
+ private:
+  static void Hash(
+      std::uint8_t* ko_it,
+      const std::size_t ko_size,
+      key_material_t::const_pointer data_ptr,
+      const key_material_t::size_type data_len,
+      key_t::const_pointer key_in,
+      const key_t::size_type key_in_len,
+      const salt_t& salt = {},
+      const context_t& ctx = context_t())
+  {
+    const exception::Exception ex{"Blake2b"};
 
     if (ko_size < MinKeyOutLen || ko_size > MaxKeyOutLen)
       ex.throw_ex<std::invalid_argument>("invalid output key length.");
@@ -89,16 +157,16 @@ class Blake2b
     crypto_generichash_blake2b_state h;
     crypto_generichash_blake2b_init_salt_personal(
         &h,
-        key_in.data(),
-        key_in.size(),
+        key_in,
+        key_in_len,
         ko_size,
         salt.data(),
         static_cast<context_t::buffer_t>(ctx).data());
 
-    if (data.empty())
+    if (!data_ptr || !data_len)
       crypto_generichash_blake2b_update(&h, digest_t{}.data(), DigestLen);
     else
-      crypto_generichash_blake2b_update(&h, data.data(), data.size());
+      crypto_generichash_blake2b_update(&h, data_ptr, data_len);
 
     crypto_generichash_blake2b_final(&h, ko_it, ko_size);
   }

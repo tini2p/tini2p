@@ -85,6 +85,23 @@ struct EciesX25519State
     curve_t::DeriveEphemeralKeys<hmac_t>(id_keys, ep_keys, kdf_ctx);
   }
 
+  EciesX25519State(const EciesX25519State& oth)
+      : id_keys(oth.id_keys),
+        ep_keys(oth.ep_keys),
+        remote_id_key(oth.remote_id_key),
+        remote_ep_key(oth.remote_ep_key),
+        root_key(oth.root_key),
+        chain_key(oth.chain_key),
+        n(oth.n),
+        pn(oth.pn),
+        salt(oth.salt),
+        requires_remote_key(oth.requires_remote_key),
+        requires_dh_ratchet(oth.requires_dh_ratchet),
+        requires_chain_ratchet(oth.requires_chain_ratchet),
+        msg_keys(oth.msg_keys)
+  {
+  }
+
   /// @brief Create an EciesX25519State with local identity private key
   /// @param id_key Local long-term static identity private key
   explicit EciesX25519State(curve_t::pvtkey_t id_key)
@@ -150,6 +167,23 @@ struct EciesX25519State
         msg_keys{}
   {
     curve_t::DeriveEphemeralKeys<hmac_t>(id_keys, ep_keys, kdf_ctx);
+  }
+
+  void operator=(const EciesX25519State& oth)
+  {
+    id_keys = oth.id_keys;
+    ep_keys = oth.ep_keys;
+    remote_id_key = oth.remote_id_key;
+    remote_ep_key = oth.remote_ep_key;
+    root_key = oth.root_key;
+    chain_key = oth.chain_key;
+    n = oth.n;
+    pn = oth.pn;
+    salt = oth.salt;
+    requires_remote_key = oth.requires_remote_key;
+    requires_dh_ratchet = oth.requires_dh_ratchet;
+    requires_chain_ratchet = oth.requires_chain_ratchet;
+    msg_keys = oth.msg_keys;
   }
 };
 
@@ -227,7 +261,12 @@ class EciesX25519
     SharedKeyLen = curve_t::SharedKeyLen,
   };
 
+  /// @brief Default ctor, creates new keypair
   EciesX25519() : state_() {}
+
+  EciesX25519(const EciesX25519& oth) : state_(oth.state_) {}
+
+  //EciesX25519(EciesX25519&& oth) : state_(std::move(oth.state_))  {}
 
   /// @brief Create an EciesX25519 with local identity private key
   /// @param id_key Local long-term identity private key
@@ -266,6 +305,16 @@ class EciesX25519
             std::forward<pubkey_t>(remote_ep_key))
   {
     Ratchet(ratchet_t::DH);
+  }
+
+  void operator=(const EciesX25519& oth)
+  {
+    state_ = oth.state_;
+  }
+
+  void operator=(EciesX25519&& oth)
+  {
+    state_ = std::move(oth.state_);
   }
 
   /// @brief Encrypt a given message
@@ -326,15 +375,27 @@ class EciesX25519
   }
 
   /// @brief Get local static keys
-  const keypair_t& static_keys() const noexcept
+  const keypair_t& id_keys() const noexcept
   {
     return state_.id_keys;
   }
 
   /// @brief Get local ephemeral keys
-  const keypair_t& ephemeral_keys() const noexcept
+  const keypair_t& ep_keys() const noexcept
   {
     return state_.ep_keys;
+  }
+
+  /// @brief Get a const reference to the identity public key
+  const pubkey_t& remote_id_key() const noexcept
+  {
+    return state_.remote_id_key;
+  }
+
+  /// @brief Get a non-const reference to the identity public key
+  pubkey_t& remote_id_key() noexcept
+  {
+    return state_.remote_id_key;
   }
 
   /// @brief Set remote identity public key
@@ -351,8 +412,14 @@ class EciesX25519
     state_.remote_ep_key = std::forward<pubkey_t>(remote_ep_key);
   }
 
+  void rekey(keypair_t keys)
+  {
+    state_.id_keys = std::forward<keypair_t>(keys);
+    curve_t::DeriveEphemeralKeys(state_.ep_keys, state_.id_keys, state_.kdf_ctx);
+  }
+
   /// @brief Create EciesX25519 keypair
-  inline static keypair_t create_keys()
+  static keypair_t create_keys()
   {
     return curve_t::create_keys();
   }

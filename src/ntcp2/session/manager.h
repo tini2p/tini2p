@@ -157,22 +157,25 @@ class SessionManager
     std::lock_guard<std::mutex> l(out_sessions_mutex_);
 
     // search for existing session to given destination
+    const auto& id_crypto = dest->identity().crypto();
+
     const auto it = std::find_if(
         out_sessions_.begin(),
         out_sessions_.end(),
-        [dest](const decltype(out_sessions_)::value_type& session) {
-          return session->key().key == dest->id_keys().pubkey;
+        [id_crypto](
+            const decltype(out_sessions_)::value_type& session) -> bool {
+          return boost::apply_visitor(
+              [&session](const auto& c) -> bool {
+                return session->key().key == c.pubkey();
+              },
+              id_crypto);
         });
 
     if (it != out_sessions_.end())
-      {
-        const auto& dest_key = dest->id_keys().pubkey;
-
-        ex.throw_ex<std::runtime_error>(
-            ("session alread exists for key: "
-             + crypto::Base64::Encode(dest_key.data(), dest_key.size()))
-                .c_str());
-      }
+      ex.throw_ex<std::runtime_error>(
+          "session already exists for key: "
+          + boost::apply_visitor(
+                crypto::Crypto::Base64EncodePubkey(), id_crypto));
 
     out_sessions_.emplace_back(new session_t(dest, info_));
 

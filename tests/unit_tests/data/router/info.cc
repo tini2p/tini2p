@@ -34,6 +34,8 @@
 #include "src/data/router/info.h"
 
 using tini2p::data::Info;
+using crypto_t = Info::identity_t::ecies_x25519_hmac_t;
+using signing_t = Info::identity_t::eddsa_t;
 
 struct RouterInfoFixture
 {
@@ -45,6 +47,7 @@ struct RouterInfoFixture
 TEST_CASE_METHOD(RouterInfoFixture, "RouterInfo has valid router identity", "[ri]")
 {
   REQUIRE(info.identity().size() == Info::identity_t::DefaultSize);
+  REQUIRE(!info.identity().cert().locally_unreachable());
 }
 
 TEST_CASE_METHOD(RouterInfoFixture, "RouterInfo has valid date", "[ri]")
@@ -72,10 +75,13 @@ TEST_CASE_METHOD(RouterInfoFixture, "RouterInfo has valid options", "[ri]")
 TEST_CASE_METHOD(RouterInfoFixture, "RouterInfo has valid signature", "[ri]")
 {
   const auto& sig = info.signature();
+  const auto& ident = info.identity();
+  const auto& sig_len =
+      boost::apply_visitor([](const auto& v) { return v.size(); }, sig);
 
-  REQUIRE(sig.size() == info.identity().signing().sig_len());
-  REQUIRE(info.identity().signing().Verify(
-      info.buffer().data(), info.size() - sig.size(), sig));
+  REQUIRE(sig_len == ident.sig_len());
+  REQUIRE(ident.Verify(info.buffer().data(), info.size() - sig_len, sig));
+  REQUIRE(info.Verify());
 }
 
 TEST_CASE_METHOD(
@@ -85,6 +91,11 @@ TEST_CASE_METHOD(
 {
   REQUIRE_NOTHROW(info.serialize());
   REQUIRE_NOTHROW(info.deserialize());
+
+  REQUIRE_NOTHROW(Info(info.buffer()));
+
+  Info info_copy(info.buffer());
+  REQUIRE(info_copy.Verify());
 }
 
 TEST_CASE_METHOD(
@@ -92,11 +103,42 @@ TEST_CASE_METHOD(
     "RouterInfo has serializes and deserializes non-empty addresses + options",
     "[ri]")
 {
+  using Catch::Matchers::Equals;
+  using vec = std::vector<std::uint8_t>;
+
   info.addresses().emplace_back(tini2p::data::Address());
   info.options().add(std::string("host"), std::string("127.0.0.1"));
 
   REQUIRE_NOTHROW(info.serialize());
   REQUIRE_NOTHROW(info.deserialize());
+
+  REQUIRE_NOTHROW(Info(info.buffer()));
+  Info info_copy(info.buffer());
+
+  REQUIRE_THAT(
+      static_cast<vec>(info_copy.buffer()),
+      Equals(static_cast<vec>(info.buffer())));
+
+  const auto& sigkey0 =
+      boost::get<signing_t>(info.identity().signing()).pubkey();
+
+  const auto& sigkey1 =
+      boost::get<signing_t>(info_copy.identity().signing()).pubkey();
+
+  REQUIRE_THAT(
+      vec(sigkey0.begin(), sigkey0.end()),
+      Equals(vec(sigkey1.begin(), sigkey1.end())));
+
+  const auto& sig0 = boost::get<signing_t::signature_t>(info.signature());
+  const auto& sig1 = boost::get<signing_t::signature_t>(info_copy.signature());
+
+  REQUIRE_THAT(
+      vec(sig0.begin(), sig0.end()), Equals(vec(sig1.begin(), sig1.end())));
+
+  REQUIRE(info_copy.identity().Verify(
+      info_copy.buffer().data(), info_copy.size() - sig1.size(), sig1));
+
+  REQUIRE(info_copy.Verify());
 }
 
 TEST_CASE_METHOD(
@@ -104,9 +146,12 @@ TEST_CASE_METHOD(
     "RouterInfo can sign a message with its router identity",
     "[ri]")
 {
-  Info::signature_t sig;
-  Info::identity_t::signing_t::message_t msg(19);
+  Info::signature_v sig;
+  signing_t::message_t msg(19);
   tini2p::crypto::RandBytes(msg);
 
-  REQUIRE_NOTHROW(info.identity().signing().Sign(msg.data(), msg.size(), sig));
+  const auto& ident = info.identity();
+
+  REQUIRE_NOTHROW(sig = ident.Sign(msg.data(), msg.size()));
+  REQUIRE(ident.Verify(msg.data(), msg.size(), sig));
 }

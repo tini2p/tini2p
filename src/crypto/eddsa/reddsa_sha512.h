@@ -109,10 +109,45 @@ class RedDSASha512
   using pvtkey_t = RedDSASha512::PrivateKey;  //< Private key trait alias
   using keypair_t = Keypair<RedDSASha512>;  //< Keypair trait alias
 
-  inline void Sign(
+  /// @brief Default ctor, creates new keypair
+  RedDSASha512()
+  {
+    rekey(create_keys());
+  }
+
+  RedDSASha512(const RedDSASha512& oth)
+      : sk_(std::make_unique<pvtkey_t>(*(oth.sk_))), pk_(oth.pk_)
+  {
+  }
+
+  /// @brief Create an RedDSASha512 signer with a private key
+  /// @param sk RedDSASha512 private key
+  explicit RedDSASha512(pvtkey_t sk)
+  {
+    rekey(std::forward<pvtkey_t>(sk));
+  }
+
+  /// @brief create a new RedDSASha512 verifier with a public key
+  /// @param sk RedDSASha512 public key
+  explicit RedDSASha512(pubkey_t pk) : pk_(std::forward<pubkey_t>(pk)) {}
+
+  /// @brief create a new RedDSASha512 verifier with a keypair
+  /// @param sk RedDSASha512 keypair
+  explicit RedDSASha512(keypair_t keys)
+  {
+    rekey(std::forward<keypair_t>(keys));
+  }
+
+  void operator=(const RedDSASha512& oth)
+  {
+    sk_ = std::make_unique<pvtkey_t>(*(oth.sk_));
+    pk_ = oth.pk_;
+  }
+
+  void Sign(
       message_t::const_pointer msg,
       const message_t::size_type msg_len,
-      signature_t& sig)
+      signature_t& sig) const
   {
     const exception::Exception ex{"RedDSA", __func__};
 
@@ -124,10 +159,10 @@ class RedDSASha512
     ex.throw_ex<std::runtime_error>("unimplemented.");
   }
 
-  inline bool Verify(
+  bool Verify(
       message_t::const_pointer msg,
       const message_t::size_type msg_len,
-      const signature_t& sig)
+      const signature_t& sig) const
   {
     const exception::Exception ex{"RedDSA", __func__};
 
@@ -147,6 +182,43 @@ class RedDSASha512
     ex.throw_ex<std::runtime_error>("unimplemented.");
 
     return keypair_t{};
+  }
+
+  /// @brief Rekey with a private key
+  /// @param sk RedDSA private key
+  void rekey(pvtkey_t sk)
+  {
+    const exception::Exception ex{"RedDSA", __func__};
+
+    ex.throw_ex<std::runtime_error>("unimplemented.");
+  }
+
+  /// @brief Rekey with a public key
+  /// @detail Disables signing functionality, will only verify signatures
+  /// @param pk X25519 public key
+  void rekey(pubkey_t pk)
+  {
+    pk_ = std::forward<pubkey_t>(pk);
+    sk_.reset(nullptr);
+  }
+
+  /// @brief Rekey with a keypair
+  /// @param k X25519 keypair
+  void rekey(keypair_t k)
+  {
+    pk_ = std::forward<pubkey_t>(k.pubkey);
+    sk_ = std::make_unique<pvtkey_t>(k.pvtkey);
+  }
+
+
+  const pubkey_t& pubkey() const noexcept
+  {
+    return pk_;
+  }
+
+  pubkey_t& pubkey() noexcept
+  {
+    return pk_;
   }
 
  private:

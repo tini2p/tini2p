@@ -55,6 +55,11 @@ class EdDSASha512 : public Ed25519
     create_own_keys({"EdDSASha512"});
   }
 
+  EdDSASha512(const EdDSASha512& oth)
+      : sk_(std::make_unique<pvtkey_t>(*(oth.sk_))), pk_(oth.pk_)
+  {
+  }
+
   /// @brief Create an EdDSASha512 signer with a private key
   /// @param sk EdDSASha512 private key
   EdDSASha512(pvtkey_t sk) { rekey(std::forward<pvtkey_t>(sk)); }
@@ -67,6 +72,12 @@ class EdDSASha512 : public Ed25519
         sk_(std::make_unique<pvtkey_t>(std::forward<pvtkey_t>(keys.pvtkey)))
   {
     std::copy_n(pk_.data(), pk_.size(), sk_->data() + PublicKeyLen);  // thanks I2P
+  }
+
+  void operator=(const EdDSASha512& oth)
+  {
+    sk_ = std::make_unique<pvtkey_t>(*(oth.sk_));
+    pk_ = oth.pk_;
   }
 
   /// @brief Sign a message
@@ -110,6 +121,12 @@ class EdDSASha512 : public Ed25519
 
   /// @brief Get a const reference to the public key
   const pubkey_t& pubkey() const noexcept
+  {
+    return pk_;
+  }
+
+  /// @brief Get a non-const reference to the public key
+  pubkey_t& pubkey() noexcept
   {
     return pk_;
   }
