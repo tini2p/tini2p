@@ -57,7 +57,8 @@ class Info
  public:
   using identity_t = Identity;  //< Identity variant trait alias
   using date_t = std::uint64_t;  //< Date trait alias
-  using addresses_t = std::vector<Address>;  //< Addresses trait alias
+  using address_t = Address;  //< Address trait alias
+  using addresses_t = std::vector<address_t>;  //< Addresses trait alias
   using options_t = Mapping;  //< Options trait alias
   using transport_t = std::vector<std::uint8_t>;  //< Transport string trait alias
   using iv_t = crypto::AES::iv_t;  //< IV trait alias
@@ -65,7 +66,9 @@ class Info
   using buffer_t = crypto::SecBytes;  //< Buffer trait alias
 
   using pointer = Info*;  //< Non-owning pointer trait alias
+  using const_pointer = const Info*;  //< Const non-owning pointer trait alias
   using unique_ptr = std::unique_ptr<Info>;  //< Unique pointer trait alias
+  using const_unique_ptr = std::unique_ptr<const Info>;  //< Const unique pointer trait alias
   using shared_ptr = std::shared_ptr<Info>;  //< Shared pointer trait alias
   using const_shared_ptr = std::shared_ptr<const Info>;  //< Const shared pointer trait alias
 

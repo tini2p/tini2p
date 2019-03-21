@@ -32,6 +32,8 @@
 
 #include <mutex>
 
+#include <boost/optional.hpp>
+
 #include "src/crypto/sec_bytes.h"
 
 #include "src/data/blocks/blocks.h"
@@ -151,7 +153,7 @@ class DataPhaseMessage
   /// @brief Get the first block of a given type
   /// @param type Type of block to search for
   /// @throw Invalid argument on out-of-range index
-  blocks_t::value_type& get_block(const data::Block::type_t type)
+  boost::optional<blocks_t::value_type&> get_block(const data::Block::type_t type)
   {
     const exception::Exception ex{"DataPhase: Message", __func__};
 
@@ -164,7 +166,11 @@ class DataPhaseMessage
         });
 
     if (it == blocks_.end())
-      ex.throw_ex<std::invalid_argument>("no block of search type", static_cast<int>(type));
+      {
+        std::cerr << "DataPhase: Message: no block of search type: "
+                  << std::to_string(static_cast<int>(type)) << std::endl;
+        return boost::none;
+      }
 
     return *it;
   }

@@ -30,7 +30,9 @@
 #ifndef SRC_NTCP2_SESSION_LISTENER_H_
 #define SRC_NTCP2_SESSION_LISTENER_H_
 
-#include "src/ntcp2/session/meta.h"
+#include <unordered_map>
+#include <unordered_set>
+
 #include "src/ntcp2/session/key.h"
 
 namespace tini2p
@@ -41,33 +43,37 @@ namespace ntcp2
 /// @brief Listen for incoming sessions on a given local endpoint
 class SessionListener
 {
-  tini2p::data::Info::shared_ptr info_;
-  boost::asio::io_context ctx_;
-  boost::asio::ip::tcp::acceptor acc_;
-  std::vector<std::unique_ptr<Session<Responder>>> sessions_;
-  std::map<SessionKey, std::uint16_t> session_count_, connect_count_;
-  std::set<SessionKey> blacklist_;
-  boost::asio::steady_timer timer_;
-  std::unique_ptr<std::thread> thread_;
-  std::mutex sessions_mutex_;
-
  public:
+  using info_t = data::Info;  //< RouterInfo trait alias
+  using key_t = crypto::X25519::pubkey_t;  //< Session key trait alias
+  using session_t = Session<Responder>;  //< Session trait alias
+  using sessions_t = std::vector<session_t::shared_ptr>;  //< Sessions container trait alias
+  using session_count_t = std::unordered_map<key_t, std::uint16_t, key_t::hasher_t>;  //< Session count trait alias
+  using blacklist_t = std::unordered_set<key_t, key_t::hasher_t>;  //< Blacklist trait alias
+
+  using pointer = SessionListener*;  //< Non-owning pointer trait alias
+  using const_pointer = const SessionListener*;  //< Const non-owning pointer trait alias
+  using unique_ptr = std::unique_ptr<SessionListener>;  //< Unique pointer trait alias
+  using const_unique_ptr = std::unique_ptr<const SessionListener>;  //< Const unique pointer trait alias
+  using shared_ptr = std::shared_ptr<SessionListener>;  //< Shared pointer trait alias
+  using const_shared_ptr = std::shared_ptr<const SessionListener>;  //< Const shared pointer trait alias
+
   /// @brief Create a session listener for local router on a given local endpoint
   /// @param info Local router info
   /// @param host Local endpoint to bind the listener
   /// @param ctx Boost IO context for listener
   SessionListener(
-      const decltype(info_) info,
-      const boost::asio::ip::tcp::endpoint& host)
+      const info_t::shared_ptr info,
+      const session_t::tcp_t::endpoint& host)
       : info_(info),
         ctx_(),
         acc_(ctx_, host, true),
-        timer_(ctx_, std::chrono::milliseconds(meta::ntcp2::session::CleanTimeout))
+        timer_(ctx_, std::chrono::milliseconds(session_t::meta_t::CleanTimeout))
   {
     acc_.listen();
 
     timer_.async_wait(
-        [=](const boost::system::error_code& ec) { CleanSessions(ec); });
+        [this](const session_t::error_c& ec) { CleanSessions(ec); });
   }
 
   ~SessionListener()
@@ -87,6 +93,8 @@ class SessionListener
   /// @brief Stop the session listener
   void Stop()
   {
+    using ms = std::chrono::milliseconds;
+
     try
       {
         {  // clean up sessions
@@ -98,12 +106,15 @@ class SessionListener
         }
 
         acc_.get_executor().context().stop();
+        timer_.expires_from_now(ms(session_t::meta_t::ShutdownTimeout));
 
         if (thread_)
           {
             thread_->join();
-            thread_.reset(nullptr);
+            thread_.reset();
           }
+
+        std::this_thread::sleep_for(ms(session_t::meta_t::ShutdownTimeout));
       }
     catch (const std::exception& ex)
       {
@@ -115,25 +126,24 @@ class SessionListener
   /// @brief Get a session indexed by the remote key
   /// @param key Alice's static Noise key
   /// @return Non-const pointer to an NTCP2 session, or nullptr when no session found
-  ntcp2::Session<ntcp2::Responder>* session(
-      const crypto::X25519::pubkey_t& key)
+  session_t::shared_ptr session(const key_t& key)
   {
     std::lock_guard<std::mutex> l(sessions_mutex_);
 
     const auto it = std::find_if(
         sessions_.begin(),
         sessions_.end(),
-        [key](const decltype(sessions_)::value_type& session) {
-          return session->key().key == key;
+        [key](const sessions_t::value_type& session) {
+          return session->key() == key;
         });
 
-    return it != sessions_.end() ? it->get() : nullptr;
+    return it != sessions_.end() ? *it : nullptr;
   }
 
   /// @brief Get if a session is blacklisted
   /// @param key Session key to search for in the blacklist
   /// @return True if session key found in the blacklist
-  bool blacklisted(const ntcp2::SessionKey& key) const
+  bool blacklisted(const key_t& key) const
   {
     return blacklist_.find(key) != blacklist_.end();
   }
@@ -141,20 +151,19 @@ class SessionListener
  private:
   void Accept()
   {
-    using session_t = decltype(sessions_)::value_type::element_type;
-
     const exception::Exception ex{"SessionListener", __func__};
 
-    acc_.async_accept([=](const boost::system::error_code& ec,
-                          boost::asio::ip::tcp::socket socket) {
+    acc_.async_accept([this, ex](
+                          const session_t::error_c& ec,
+                          session_t::tcp_t::socket socket) {
       if (ec)
         ex.throw_ex<std::runtime_error>(ec.message().c_str());
-
+      //--------------------------------------------------
       {  // create new session for the incoming connection
         std::lock_guard<std::mutex> l(sessions_mutex_);
 
-        auto session = std::make_unique<session_t>(info_, std::move(socket));
-        session->Start(meta::ntcp2::session::IP_t::v6);  // try IPv6, fallback to IPv4
+        sessions_t::value_type session(new session_t(info_, std::move(socket)));
+        session->Start(session_t::meta_t::IP::v6);  // try IPv6, fallback to IPv4
 
         // try inserting new connection, or get existing entry
         auto count_it =
@@ -163,44 +172,42 @@ class SessionListener
         const bool blacklisted =
             blacklist_.find(count_it->first) != blacklist_.end();
 
-        if (++count_it->second > meta::ntcp2::session::MaxConnections || blacklisted)
+        if (++count_it->second > session_t::meta_t::MaxConnections || blacklisted)
           {
-            std::cerr << "SessionListener: "
-                      << "blacklisted host with connection key: "
-                      << crypto::Base64::Encode(
-                             count_it->first.key.data(),
-                             count_it->first.key.size())
-                      << std::endl;
+            const std::string err_msg(
+                "SessionListener: blacklisted host with connection key: "
+                + crypto::Base64::Encode(count_it->first));
+
             if (!blacklisted)
-              {
-                blacklist_.emplace(std::move(count_it->first));
-                connect_count_.erase(count_it);
-              }
+              blacklist_.emplace(std::move(count_it->first));
+
+            connect_count_.erase(count_it);
+            ex.throw_ex<std::runtime_error>(std::move(err_msg));
           }
         else if (
             std::find_if(
                 sessions_.begin(),
                 sessions_.end(),
-                [count_it](const decltype(sessions_)::value_type& session_ptr) {
-                  return session_ptr->connect_key().key == count_it->first.key;
+                [count_it](const sessions_t::value_type& session_ptr) {
+                  return session_ptr->connect_key() == count_it->first;
                 })
             != sessions_.end())
           {
-            std::cerr << "SessionListener: "
-                      << "session already exists for connection key: "
-                      << crypto::Base64::Encode(
-                             count_it->first.key.data(),
-                             count_it->first.key.size())
-                      << std::endl;
+            const std::string err_msg(
+                "SessionListener: session already exists for connection key: "
+                + crypto::Base64::Encode(count_it->first));
+
             if (!blacklisted)
               {
                 blacklist_.emplace(std::move(count_it->first));
                 connect_count_.erase(count_it);
               }
+
+            ex.throw_ex<std::runtime_error>(std::move(err_msg));
           }
         else
           sessions_.emplace_back(std::move(session));
-      }
+      }  // end session-lock scope
 
       Accept();
     });
@@ -209,7 +216,7 @@ class SessionListener
   void Run()
   {
     const auto func = __func__;
-    thread_ = std::make_unique<std::thread>([=]() {
+    thread_ = std::make_unique<std::thread>([this, func]() {
       try
         {
           acc_.get_io_service().run();
@@ -218,17 +225,17 @@ class SessionListener
         {
           std::cerr << "SessionListener: " << func << ": " << ex.what()
                     << std::endl;
-          Stop();
         }
     });
   }
 
-  void CleanSessions(const boost::system::error_code& ec)
+  void CleanSessions(const session_t::error_c& ec)
   {
-    if (ec && ec != boost::asio::error::eof)
-      exception::Exception{"SessionListener", __func__}
-          .throw_ex<std::runtime_error>(ec.message().c_str());
+    const exception::Exception ex{"SessionListener", __func__};
 
+    if (ec && ec != boost::asio::error::eof)
+      ex.throw_ex<std::runtime_error>(ec.message().c_str());
+    //------------------------------------------
     {  // remove failed and blacklisted sessions
       std::lock_guard<std::mutex> l(sessions_mutex_);
 
@@ -247,17 +254,27 @@ class SessionListener
 
       for (auto it = session_count_.begin(); it != session_count_.end(); ++it)
         {
-          if (it->second > meta::ntcp2::session::MaxSessions)
+          if (it->second > session_t::meta_t::MaxSessions)
             {
               blacklist_.emplace(std::move(it->first));
               session_count_.erase(it);
             }
         }
-    }
+    }  // end session-lock scope
 
     timer_.async_wait(
-        [=](const boost::system::error_code& ec) { CleanSessions(ec); });
+        [this](const session_t::error_c& ec) { CleanSessions(ec); });
   }
+
+  info_t::shared_ptr info_;
+  session_t::context_t ctx_;
+  session_t::tcp_t::acceptor acc_;
+  sessions_t sessions_;
+  session_count_t session_count_, connect_count_;
+  blacklist_t blacklist_;
+  boost::asio::steady_timer timer_;
+  std::unique_ptr<std::thread> thread_;
+  std::mutex sessions_mutex_;
 };
 }  // namespace ntcp2
 }  // namespace tini2p

@@ -41,13 +41,30 @@
 #include "src/ntcp2/session_confirmed/session_confirmed.h"
 #include "src/ntcp2/data_phase/data_phase.h"
 
-#include "src/ntcp2/session/meta.h"
 #include "src/ntcp2/session/key.h"
 
 namespace tini2p
 {
 namespace ntcp2
 {
+struct SessionMeta
+{
+enum
+{
+  CleanTimeout = 5000,  //< in milliseconds
+  WaitTimeout = 3000,  //< in milliseconds
+  MaxSessions = 3,  //< max sessions in CleanTimeout
+  MaxConnections = 11,  //< max connections in CleanTimeout
+  ShutdownTimeout = 13, //< in milliseconds, somewhat arbitrary, adjust based on performance tests
+};
+
+enum struct IP : bool
+{
+  v4,
+  v6,
+};
+};
+
 /// @class Session
 /// @tparam TRole Noise role for the first data phase message
 /// @detail On first data phase message, session initiator will be responder, vice versa
@@ -55,11 +72,12 @@ template <class TRole>
 class Session
 {
  public:
-  using state_t = NoiseHandshakeState;  //< Handshake state alias
+  using state_t = NoiseHandshakeState;  //< Handshake state trait alias
+  using meta_t = SessionMeta;  //< Meta trait alias
   using info_t = data::Info;  //< RouterInfo trait alias
   using dest_t = data::Info;  //< Destination trait alias
   using obfse_t = crypto::AES;  //< Obfse crypto trait alias
-  using key_t = SessionKey;  //< Key trait alias
+  using key_t = crypto::X25519::pubkey_t;  //< Key trait alias
 
   /// @alias created_impl_t
   /// @brief SessionRequest implementation trait
@@ -95,8 +113,15 @@ class Session
   using data_msg_t = typename data_impl_t::message_t;  //< DataPhase message trait alias
 
   using context_t = boost::asio::io_context;  //< ASIO context trait alias
-  using socket_t = boost::asio::ip::tcp::socket;  //< Socket trait alias
-  using endpoint_t = boost::asio::ip::tcp::endpoint;  //< Endpoint trait alias
+  using tcp_t = boost::asio::ip::tcp;  //< TCP trait alias
+  using error_c = boost::system::error_code;  //< Error code trait alias
+
+  using pointer = Session<TRole>*;  //< Non-owning pointer trait alias
+  using const_pointer = const Session<TRole>*;  //< Const non-owning pointer trait alias
+  using unique_ptr = std::unique_ptr<Session<TRole>>;  //< Unique pointer trait alias
+  using const_unique_ptr = std::unique_ptr<const Session<TRole>>;  //< Const unique pointer trait alias
+  using shared_ptr = std::shared_ptr<Session<TRole>>;  //< Shared pointer trait alias
+  using const_shared_ptr = std::shared_ptr<const Session<TRole>>;  //< Const shared pointer trait alias
 
   /// @brief Create a session for a destination
   /// @param dest RouterInfo for remote destination
@@ -106,6 +131,7 @@ class Session
         info_(info),
         ctx_(),
         sock_(ctx_),
+        strand_(ctx_),
         ready_(false)
   {
     const exception::Exception ex{"Session", __func__};
@@ -123,8 +149,8 @@ class Session
 
     std::copy_n(
         crypto::Base64::Decode(dest_->options().entry(std::string("s"))).data(),
-        remote_key_.key.size(),
-        remote_key_.key.data());
+        remote_key_.size(),
+        remote_key_.data());
 
     std::copy_n(
         crypto::Base64::Decode(dest_->options().entry(std::string("i"))).data(),
@@ -135,9 +161,10 @@ class Session
   /// @brief Create a session for an incoming connection
   /// @param dest RouterInfo for remote destination
   /// @param info RouterInfo for local router
-  Session(info_t::shared_ptr info, socket_t socket)
+  Session(info_t::shared_ptr info, tcp_t::socket socket)
       : info_(info),
         sock_(std::move(socket)),
+        strand_(sock_.get_executor().context()),
         ready_(false)
   {
     const exception::Exception ex{"Session", __func__};
@@ -161,7 +188,7 @@ class Session
   }
 
   /// @brief Start the NTCP2 session
-  void Start(const meta::ntcp2::session::IP_t proto)
+  void Start(const meta_t::IP proto)
   {
     if (std::is_same<TRole, Initiator>::value)
       Connect(proto);
@@ -174,15 +201,15 @@ class Session
   void Wait()
   {
     using ms = std::chrono::milliseconds;
-    using tini2p::meta::ntcp2::session::WaitTimeout;
+
+    const exception::Exception ex{"Session", __func__};
 
     std::unique_lock<std::mutex> l(ready_mutex_);
-    if (!cv_.wait_for(l, ms(WaitTimeout), [=]() { return ready_; }))
+    if (!cv_.wait_for(l, ms(meta_t::WaitTimeout), [this, &l, ex]() { return ready_; }))
       {
         l.unlock();
         Stop();
-        exception::Exception{"Session", __func__}.throw_ex<std::runtime_error>(
-            "handshake timed out.");
+        ex.throw_ex<std::runtime_error>("handshake timed out.");
       }
     l.unlock();
     cv_.notify_all();
@@ -211,9 +238,10 @@ class Session
   /// @param message Data phase message to write
   void Write(data_msg_t& message)
   {
+    const exception::Exception ex{"Session", __func__};
+
     if (!ready_)
-      exception::Exception{"Session", __func__}.throw_ex<std::runtime_error>(
-          "session not ready for data phase.");
+      ex.throw_ex<std::runtime_error>("session not ready for data phase.");
 
     dp_->Write(message);
   }
@@ -222,16 +250,17 @@ class Session
   /// @param message Data phase message to store read results
   void Read(data_msg_t& message)
   {
+    const exception::Exception ex{"Session", __func__};
+
     if (!ready_)
-      exception::Exception{"Session", __func__}.throw_ex<std::runtime_error>(
-          "session not ready for data phase.");
+      ex.throw_ex<std::runtime_error>("session not ready for data phase.");
 
     dp_->Read(message);
   }
 
   /// @brief Get a non-const reference to the socket
   /// @return Reference to session socket
-  socket_t& socket() noexcept
+  tcp_t::socket& socket() noexcept
   {
     return sock_;
   }
@@ -264,13 +293,13 @@ class Session
                            ? sock_.local_endpoint().address().to_string()
                            : sock_.remote_endpoint().address().to_string();
 
-    crypto::Sha256::Hash(connect_key_.key.buffer(), host);
+    crypto::Sha256::Hash(connect_key_.buffer(), host);
   }
 
   void Run()
   {
     const auto func = __func__;
-    thread_ = std::make_unique<std::thread>([=]() {
+    thread_ = std::make_unique<std::thread>([this, func]() {
       try
         {
           sock_.get_executor().context().run();
@@ -283,46 +312,47 @@ class Session
     });
   }
 
-  void Connect(const meta::ntcp2::session::IP_t proto)
+  void Connect(const meta_t::IP proto)
   {
-    boost::system::error_code ec;
-    remote_host_ = dest_->host((bool)proto);
+    error_c ec;
+    remote_host_ = dest_->host(static_cast<bool>(proto));
 
     const exception::Exception ex{"Session", __func__};
 
     sock_.open(remote_host_.protocol());
-    sock_.set_option(socket_t::reuse_address(true));
-    sock_.bind(endpoint_t(remote_host_.protocol(), 0), ec);
+    sock_.set_option(tcp_t::socket::reuse_address(true));
+    sock_.bind(tcp_t::endpoint(remote_host_.protocol(), 0), ec);
     if (ec)
       ex.throw_ex<std::runtime_error>(ec.message().c_str());
 
-    sock_.async_connect(
-        remote_host_, [this, ex](const boost::system::error_code& ec) {
-          if (ec)
-            ex.throw_ex<std::runtime_error>(ec.message().c_str());
+    const auto connect_handler = [this, ex](const error_c& ec) {
+      if (ec)
+        ex.throw_ex<std::runtime_error>(ec.message().c_str());
 
-          HandleSessionRequest();
-        });
+      HandleSessionRequest();
+    };
+
+    sock_.async_connect(remote_host_, strand_.wrap(connect_handler));
 
     Run();
   }
 
   void HandleSessionRequest()
   {
+
     if (std::is_same<TRole, Initiator>::value)
       DoSessionRequest();
     else
       {
-        const auto func = __func__;
-        sock_.async_wait(
-            socket_t::wait_read,
-            [this, func](const boost::system::error_code& ec) {
-              if (ec)
-                exception::Exception{"Session", func}
-                    .throw_ex<std::runtime_error>(ec.message().c_str());
+        const exception::Exception ex{"Session", __func__};
 
-              DoSessionRequest();
-            });
+        const auto do_session_request = [this, ex](const error_c& ec) {
+          if (ec)
+            ex.throw_ex<std::runtime_error>(ec.message().c_str());
+
+          DoSessionRequest();
+        };
+        sock_.async_wait(tcp_t::socket::wait_read, strand_.wrap(do_session_request));
        }
 
     CalculateConnectKey();
@@ -343,7 +373,7 @@ class Session
         request_impl_t srq(state_, ident.hash(), aes_iv_);
         auto& kdf = srq.kdf();
         kdf.set_local_keys(boost::apply_visitor(get_id_keys, ident.crypto()));
-        kdf.Derive(remote_key_.key);
+        kdf.Derive(remote_key_);
 
         std::lock_guard<std::mutex> lg(msg_mutex_);
         srq_msg_ = std::make_unique<request_msg_t>(
@@ -353,46 +383,27 @@ class Session
                 request_msg_t::MaxPaddingSize));
 
         srq.ProcessMessage(*srq_msg_);
+
+        const auto write_completion_handler =
+            [this, ex](const error_c& ec, const std::size_t) {
+              if (ec && ec != boost::asio::error::eof)
+                ex.throw_ex<std::runtime_error>(ec.message());
+
+              HandleSessionCreated();
+            };
+
         boost::asio::async_write(
             sock_,
             boost::asio::buffer(srq_msg_->data.data(), srq_msg_->data.size()),
-            [this, ex](
-                const boost::system::error_code& ec,
-                const std::size_t bytes_transferred) {
-              if (ec && ec != boost::asio::error::eof)
-                ex.throw_ex<std::runtime_error>(ec.message().c_str());
-
-              srq_xfer_ += bytes_transferred;
-              return srq_msg_->data.size() - srq_xfer_;
-            },
-            [this, ex](
-                const boost::system::error_code& ec,
-                const std::size_t bytes_transferred) {
-              if (ec && ec != boost::asio::error::eof)
-                ex.throw_ex<std::runtime_error>(ec.message().c_str());
-
-              HandleSessionCreated();
-            });
+            strand_.wrap(write_completion_handler));
       }
     else
       {
         std::lock_guard<std::mutex> lg(msg_mutex_);
         srq_msg_ = std::make_unique<request_msg_t>();
-        boost::asio::async_read(
-            sock_,
-            boost::asio::buffer(srq_msg_->data.data(), srq_msg_->data.size()),
-            [this, ex](
-                const boost::system::error_code& ec,
-                const std::size_t bytes_transferred) {
-              if (ec && ec != boost::asio::error::eof)
-                ex.throw_ex<std::runtime_error>(ec.message().c_str());
 
-              srq_xfer_ += bytes_transferred;
-              return request_msg_t::NoisePayloadSize - srq_xfer_;
-            },
-            [this, get_id_keys, ex](
-                const boost::system::error_code& ec,
-                const std::size_t bytes_transferred) {
+        const auto read_completion_handler =
+            [this, get_id_keys, ex](const error_c& ec, const std::size_t) {
               if (ec && ec != boost::asio::error::eof)
                 ex.throw_ex<std::runtime_error>(ec.message().c_str());
 
@@ -408,31 +419,29 @@ class Session
                 {
                   srq_xfer_ = 0;
                   srq_msg_->padding.resize(srq_msg_->options.pad_len);
-                  boost::asio::async_read(
-                      sock_,
-                      boost::asio::buffer(
-                          srq_msg_->padding.data(), srq_msg_->padding.size()),
-                      [this, ex](
-                          const boost::system::error_code& ec,
-                          const std::size_t bytes_transferred) {
-                        if (ec && ec != boost::asio::error::eof)
-                          ex.throw_ex<std::runtime_error>(ec.message().c_str());
 
-                        srq_xfer_ += bytes_transferred;
-                        return srq_msg_->padding.size() - srq_xfer_;
-                      },
-                      [this, ex](
-                          const boost::system::error_code& ec,
-                          const std::size_t bytes_transferred) {
+                  const auto padding_completion_handler =
+                      [this, ex](const error_c& ec, const std::size_t) {
                         if (ec && ec != boost::asio::error::eof)
                           ex.throw_ex<std::runtime_error>(ec.message().c_str());
 
                         HandleSessionCreated();
-                      });
+                      };
+
+                  boost::asio::async_read(
+                      sock_,
+                      boost::asio::buffer(
+                          srq_msg_->padding.data(), srq_msg_->padding.size()),
+                      strand_.wrap(padding_completion_handler));
                 }
               else
                 HandleSessionCreated();
-            });
+            };
+
+        boost::asio::async_read(
+            sock_,
+            boost::asio::buffer(srq_msg_->data.data(), srq_msg_->data.size()),
+            strand_.wrap(read_completion_handler));
       }
   }
 
@@ -440,16 +449,14 @@ class Session
   {
     if (std::is_same<TRole, Initiator>::value)
       {
-        const auto func = __func__;
+        const exception::Exception ex{"Session", __func__};
         sock_.async_wait(
-            socket_t::wait_read,
-            [this, func](const boost::system::error_code& ec) {
+            tcp_t::socket::wait_read, strand_.wrap([this, ex](const error_c& ec) {
               if (ec && ec != boost::asio::error::eof)
-                exception::Exception{"Session", func}
-                    .throw_ex<std::runtime_error>(ec.message().c_str());
+                ex.throw_ex<std::runtime_error>(ec.message().c_str());
 
               DoSessionCreated();
-            });
+            }));
       }
     else
       DoSessionCreated();
@@ -463,19 +470,8 @@ class Session
       {
         std::lock_guard<std::mutex> lg(msg_mutex_);
         scr_msg_ = std::make_unique<created_msg_t>();
-        boost::asio::async_read(
-            sock_,
-            boost::asio::buffer(
-                scr_msg_->data.data(), created_msg_t::NoisePayloadSize),
-            [this, ex](
-                const boost::system::error_code& ec,
-                const std::size_t bytes_transferred) {
-              if (ec && ec != boost::asio::error::eof)
-                ex.throw_ex<std::runtime_error>(ec.message().c_str());
 
-              scr_xfer_ += bytes_transferred;
-              return created_msg_t::NoisePayloadSize - scr_xfer_;
-            },
+        const auto read_completion_handler =
             [this, ex](
                 const boost::system::error_code& ec,
                 const std::size_t bytes_transferred) {
@@ -494,27 +490,23 @@ class Session
                       sock_,
                       boost::asio::buffer(
                           scr_msg_->padding.data(), scr_msg_->options.pad_len),
-                      [this, ex](
-                          const boost::system::error_code& ec,
-                          const std::size_t bytes_transferred) {
-                        if (ec && ec != boost::asio::error::eof)
-                          ex.throw_ex<std::runtime_error>(ec.message().c_str());
-
-                        scr_xfer_ += bytes_transferred;
-                        return scr_msg_->padding.size() - scr_xfer_;
-                      },
-                      [this, ex](
-                          const boost::system::error_code& ec,
-                          const std::size_t bytes_transferred) {
+                      strand_.wrap([this, ex](
+                                       const error_c& ec, const std::size_t) {
                         if (ec && ec != boost::asio::error::eof)
                           ex.throw_ex<std::runtime_error>(ec.message().c_str());
 
                         HandleSessionConfirmed();
-                      });
+                      }));
                 }
               else
                 ex.throw_ex<std::length_error>("null padding length.");
-            });
+            };
+
+        boost::asio::async_read(
+            sock_,
+            boost::asio::buffer(
+                scr_msg_->data.data(), created_msg_t::NoisePayloadSize),
+            strand_.wrap(read_completion_handler));
       }
     else
       {
@@ -528,23 +520,12 @@ class Session
         boost::asio::async_write(
             sock_,
             boost::asio::buffer(scr_msg_->data.data(), scr_msg_->data.size()),
-            [this, ex](
-                const boost::system::error_code& ec,
-                const std::size_t bytes_transferred) {
-              if (ec && ec != boost::asio::error::eof)
-                ex.throw_ex<std::runtime_error>(ec.message().c_str());
-
-              scr_xfer_ += bytes_transferred;
-              return scr_msg_->data.size() - scr_xfer_;
-            },
-            [this, ex](
-                const boost::system::error_code& ec,
-                const std::size_t bytes_transferred) {
+            strand_.wrap([this, ex](const error_c& ec, const std::size_t) {
               if (ec && ec != boost::asio::error::eof)
                 ex.throw_ex<std::runtime_error>(ec.message().c_str());
 
               HandleSessionConfirmed();
-            });
+            }));
       }
   }
 
@@ -554,16 +535,14 @@ class Session
       DoSessionConfirmed();
     else
       {
-        const auto func = __func__;
+        const exception::Exception ex{"Session", __func__};
         sock_.async_wait(
-            boost::asio::ip::tcp::socket::wait_read,
-            [this, func](const boost::system::error_code& ec) {
+            tcp_t::socket::wait_read, strand_.wrap([this, ex](const error_c& ec) {
               if (ec && ec != boost::asio::error::eof)
-                exception::Exception{"Session", func}
-                    .throw_ex<std::runtime_error>(ec.message().c_str());
+                ex.throw_ex<std::runtime_error>(ec.message().c_str());
 
               DoSessionConfirmed();
-            });
+            }));
       }
   }
 
@@ -581,23 +560,12 @@ class Session
         boost::asio::async_write(
             sock_,
             boost::asio::buffer(sco_msg_->data.data(), sco_msg_->data.size()),
-            [this, ex](
-                const boost::system::error_code& ec,
-                std::size_t bytes_transferred) {
-              if (ec && ec != boost::asio::error::eof)
-                ex.throw_ex<std::runtime_error>(ec.message().c_str());
-
-              sco_xfer_ += bytes_transferred;
-              return sco_msg_->data.size() - sco_xfer_;
-            },
-            [this, ex](
-                const boost::system::error_code& ec,
-                std::size_t bytes_transferred) {
+            strand_.wrap([this, ex](const error_c& ec, std::size_t) {
               if (ec && ec != boost::asio::error::eof)
                 ex.throw_ex<std::runtime_error>(ec.message().c_str());
 
               HandleDataPhase();
-            });
+            }));
       }
     else
       {
@@ -605,21 +573,8 @@ class Session
         sco_msg_.reset(new confirmed_msg_t(
             confirmed_msg_t::PartOneSize + srq_msg_->options.m3p2_len));
 
-        boost::asio::async_read(
-            sock_,
-            boost::asio::buffer(sco_msg_->data.data(), sco_msg_->data.size()),
-            [this, ex](
-                const boost::system::error_code& ec,
-                std::size_t bytes_transferred) {
-              if (ec && ec != boost::asio::error::eof)
-                ex.throw_ex<std::runtime_error>(ec.message().c_str());
-
-              sco_xfer_ += bytes_transferred;
-              return sco_msg_->data.size() - sco_xfer_;
-            },
-            [this, ex](
-                const boost::system::error_code& ec,
-                std::size_t bytes_transferred) {
+        const auto read_completion_handler =
+            [this, ex](const error_c& ec, std::size_t) {
               if (ec && ec != boost::asio::error::eof)
                 ex.throw_ex<std::runtime_error>(ec.message().c_str());
 
@@ -628,19 +583,26 @@ class Session
 
               // get static key from Alice's RouterInfo
               dest_ = sco_msg_->info_block.info();
-              const crypto::SecBytes s(crypto::Base64::Decode(dest_->options().entry(std::string("s"))));
+              const crypto::SecBytes s(crypto::Base64::Decode(
+                  dest_->options().entry(std::string("s"))));
 
               // get Alice's static key from first frame
-              noise::get_remote_public_key(state_, remote_key_.key, ex);
+              noise::get_remote_public_key(state_, remote_key_, ex);
 
               // check static key from first frame matches RouterInfo static key, see spec
-              const bool match = std::equal(s.begin(), s.end(), remote_key_.key.begin());
+              const bool match = std::equal(s.begin(), s.end(), remote_key_.begin());
 
               if (!match)
-                ex.throw_ex<std::logic_error>("static key does not match initial SessionRequest key.");
+                ex.throw_ex<std::logic_error>(
+                    "static key does not match initial SessionRequest key.");
 
               HandleDataPhase();
-            });
+            };
+
+        boost::asio::async_read(
+            sock_,
+            boost::asio::buffer(sco_msg_->data.data(), sco_msg_->data.size()),
+            strand_.wrap(read_completion_handler));
       }
   }
 
@@ -648,16 +610,15 @@ class Session
   {
     if (std::is_same<TRole, Initiator>::value)
       {
-        const auto func = __func__;
+        const exception::Exception ex{"Session", __func__};
+
         sock_.async_wait(
-            socket_t::wait_read,
-            [this, func](const boost::system::error_code& ec) {
+            tcp_t::socket::wait_read, strand_.wrap([this, ex](const error_c& ec) {
               if (ec && ec != boost::asio::error::eof)
-                exception::Exception{"Session", func}
-                    .throw_ex<std::runtime_error>(ec.message().c_str());
+                ex.throw_ex<std::runtime_error>(ec.message().c_str());
 
               DoDataPhase();
-            });
+            }));
       }
     else
       DoDataPhase();
@@ -672,22 +633,8 @@ class Session
         dp_msg_ = std::make_unique<data_msg_t>();
         dp_msg_->buffer().resize(data_msg_t::MaxLen);
 
-        // read message length from the socket
-        boost::asio::async_read(
-            sock_,
-            boost::asio::buffer(dp_msg_->buffer().data(), data_msg_t::SizeLen),
-            [this, ex](
-                const boost::system::error_code& ec,
-                std::size_t bytes_transferred) {
-              if (ec && ec != boost::asio::error::eof)
-                ex.throw_ex<std::runtime_error>(ec.message().c_str());
-
-              dp_xfer_ += bytes_transferred;
-              return data_msg_t::SizeLen - dp_xfer_;
-            },
-            [this, ex](
-                const boost::system::error_code& ec,
-                std::size_t bytes_transferred) {
+        const auto read_completion_handler =
+            [this, ex](const error_c& ec, std::size_t) {
               if (ec && ec != boost::asio::error::eof)
                 ex.throw_ex<std::runtime_error>(ec.message().c_str());
 
@@ -701,38 +648,24 @@ class Session
               if(obfs_len)
                 {
                   dp_xfer_ = 0;
-                  // read remaing message bytes
                   dp_msg_->buffer().resize(data_msg_t::SizeLen + obfs_len);
-                  boost::asio::async_read(
-                      sock_,
-                      boost::asio::buffer(
-                          &dp_msg_->buffer()[data_msg_t::SizeLen], obfs_len),
-                      [this, ex, obfs_len](
-                          const boost::system::error_code& ec,
-                          std::size_t bytes_transferred) {
-                        if (ec && ec != boost::asio::error::eof)
-                          ex.throw_ex<std::runtime_error>(ec.message().c_str());
 
-                        dp_xfer_ += bytes_transferred;
-                        return obfs_len - dp_xfer_;
-                      },
-                      [this, ex, obfs_len](
-                          const boost::system::error_code& ec,
-                          std::size_t bytes_transferred) {
+                  // read remaing message bytes
+                  const auto data_completion_handler =
+                      [this, ex, obfs_len](const error_c& ec, std::size_t) {
                         if (ec && ec != boost::asio::error::eof)
                           ex.throw_ex<std::runtime_error>(ec.message().c_str());
 
                         // write deobfuscated length back to message
                         tini2p::write_bytes(dp_msg_->buffer().data(), obfs_len);
                         dp_->Read(*dp_msg_, false /*deobfs len*/);
-
-                        const auto& info_block =
-                            dp_msg_->get_block(data::Block::type_t::Info);
-                        if (boost::get<tini2p::data::InfoBlock>(info_block)
-                                .info()
-                                ->options()
-                                .entry(std::string("s"))
-                            != dest_->options().entry(std::string("s")))
+                        const auto& info_block = dp_msg_->get_block(data::Block::type_t::Info);
+                        if (info_block
+                            && boost::get<tini2p::data::InfoBlock>(*info_block)
+                                       .info()
+                                       ->options()
+                                       .entry(std::string("s"))
+                                   != dest_->options().entry(std::string("s")))
                           ex.throw_ex<std::logic_error>("invalid static key.");
                         //--------------------------------------------
                         {
@@ -740,9 +673,21 @@ class Session
                           ready_ = true;
                         }
                         cv_.notify_all();
-                      });
+                      };
+
+                  boost::asio::async_read(
+                      sock_,
+                      boost::asio::buffer(
+                          &dp_msg_->buffer()[data_msg_t::SizeLen], obfs_len),
+                      strand_.wrap(data_completion_handler));
                 }
-            });
+            };
+
+        // read message length from the socket
+        boost::asio::async_read(
+            sock_,
+            boost::asio::buffer(dp_msg_->buffer().data(), data_msg_t::SizeLen),
+            strand_.wrap(read_completion_handler));
       }
     else
       {
@@ -756,19 +701,9 @@ class Session
 
         boost::asio::async_write(
             sock_,
-            boost::asio::buffer(dp_msg_->buffer().data(), dp_msg_->buffer().size()),
-            [this, ex](
-                const boost::system::error_code& ec,
-                std::size_t bytes_transferred) {
-              if (ec && ec != boost::asio::error::eof)
-                ex.throw_ex<std::runtime_error>(ec.message().c_str());
-
-              dp_xfer_ += bytes_transferred;
-              return dp_msg_->buffer().size() - dp_xfer_;
-            },
-            [this, ex](
-                const boost::system::error_code& ec,
-                std::size_t bytes_transferred) {
+            boost::asio::buffer(
+                dp_msg_->buffer().data(), dp_msg_->buffer().size()),
+            strand_.wrap([this, ex](const error_c& ec, std::size_t) {
               if (ec && ec != boost::asio::error::eof)
                 ex.throw_ex<std::runtime_error>(ec.message().c_str());
               //--------------------------------------------
@@ -777,7 +712,7 @@ class Session
                 ready_ = true;
               }
               cv_.notify_all();
-            });
+            }));
       }
   }
 
@@ -787,8 +722,9 @@ class Session
   key_t remote_key_, connect_key_;
   obfse_t::iv_t aes_iv_;
   context_t ctx_;
-  socket_t sock_;
-  endpoint_t remote_host_;
+  tcp_t::socket sock_;
+  context_t::strand strand_;
+  tcp_t::endpoint remote_host_;
   std::unique_ptr<request_msg_t> srq_msg_;
   std::unique_ptr<created_msg_t> scr_msg_;
   std::unique_ptr<confirmed_msg_t> sco_msg_;

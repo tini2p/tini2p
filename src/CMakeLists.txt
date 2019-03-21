@@ -42,7 +42,6 @@ add_library(tini2p-core
   crypto/hkdf.h
   crypto/keys.h
   crypto/rand.h
-  crypto/radix.h
   crypto/sha.h
   crypto/x25519.h
   crypto/dh/x3dh.h

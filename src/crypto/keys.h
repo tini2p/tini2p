@@ -121,6 +121,18 @@ class Key
   buffer_t buf_;
 };
 
+template <std::size_t N>
+struct KeyHasher
+{
+  std::size_t operator()(const Key<N>& k) const
+  {
+    std::size_t s(0), i(0);
+    for (const auto& kb : k)
+      s ^= std::hash<std::uint8_t>()(kb) << i++;
+    return s;
+  }
+};
+
 template <class CryptoImpl>
 struct Keypair
 {

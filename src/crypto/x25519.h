@@ -61,6 +61,14 @@ class X25519
   struct PublicKey : public Key<PublicKeyLen>
   {
     using base_t = Key<PublicKeyLen>;
+    using hasher_t = KeyHasher<PublicKeyLen>;  //< Hasher trait alias
+
+    using pointer = PublicKey*;  //< Non-owning pointer trait alias
+    using const_pointer = const PublicKey*;  //< Const non-owning pointer trait alias
+    using unique_ptr = std::unique_ptr<PublicKey>;  //< Unique pointer trait alias
+    using const_unique_ptr = std::unique_ptr<const PublicKey>;  //< Const unique pointer trait alias
+    using shared_ptr = std::shared_ptr<PublicKey>;  //< Shared pointer trait alias
+    using const_shared_ptr = std::shared_ptr<const PublicKey>;  //< Const shared pointer trait alias
 
     PublicKey() : base_t() {}
 

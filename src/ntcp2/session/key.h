@@ -36,25 +36,6 @@ namespace tini2p
 {
 namespace ntcp2
 {
-/// @struct SessionKey
-/// @brief Storage struct for incoming session keys
-struct SessionKey
-{
-  crypto::X25519::pubkey_t key;
-
-  SessionKey() : key() {}
-
-  explicit SessionKey(decltype(key)&& pk)
-      : key(std::forward<decltype(key)>(pk))
-  {
-  }
-
-  bool operator<(const SessionKey rhs) const
-  {
-    return std::lexicographical_compare(
-        key.begin(), key.end(), rhs.key.begin(), rhs.key.end());
-  }
-};
 }  // namespace ntcp2
 }  // namespace tini2p
 
