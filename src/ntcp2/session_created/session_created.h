@@ -83,15 +83,12 @@ class SessionCreated
  private:
   void Write(message_t& message)
   {
-    using tini2p::crypto::X25519;
-
     const exception::Exception ex{"SessionCreated", __func__};
 
     NoiseBuffer data /*output*/, payload /*input*/;
 
     // ensure enough room for Noise payload + padding
-    message.data.resize(
-        message_t::NoisePayloadSize + message.options.pad_len);
+    message.data.resize(message_t::NoisePayloadSize + message.options.pad_len);
     message.options.serialize();
 
     auto& in = message.options.buffer;
@@ -102,7 +99,7 @@ class SessionCreated
     noise::write_message(state_, &data, &payload, ex);
 
     // encrypt Y in-place
-    obfse_.Process<obfse_t::encrypt_m>(out.data(), X25519::PublicKeyLen);
+    obfse_.Encrypt(out.data(), crypto::X25519::PublicKeyLen);
 
     // save ciphertext for session confirmed KDF
     std::copy_n(
@@ -119,8 +116,6 @@ class SessionCreated
 
   void Read(message_t& message)
   {
-    using tini2p::crypto::X25519;
-
     const exception::Exception ex{"SessionCreated", __func__};
 
     NoiseBuffer data /*input*/, payload /*output*/;
@@ -134,7 +129,7 @@ class SessionCreated
       ex.throw_ex<std::length_error>("invalid message size.");
 
     // decrypt Y in-place
-    obfse_.Process<obfse_t::decrypt_m>(in.data(), X25519::PublicKeyLen);
+    obfse_.Decrypt(in.data(), crypto::X25519::PublicKeyLen);
 
     // save ciphertext for session confirmed KDF
     std::copy_n(

@@ -39,11 +39,9 @@ namespace crypto
 template <class Hasher>
 class KDFContext
 {
-  std::vector<std::uint8_t> ctx_;
-
  public:
   using string_t = std::string;
-  using buffer_t = decltype(ctx_);
+  using buffer_t = std::vector<std::uint8_t>;
 
   KDFContext() : ctx_(Hasher::DefaultContextLen) {}
 
@@ -100,6 +98,9 @@ class KDFContext
   {
     return ctx_;
   }
+
+ private:
+  buffer_t ctx_;
 };
 }  // namespace crypto
 }  // namespace tini2p

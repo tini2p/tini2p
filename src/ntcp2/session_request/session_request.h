@@ -63,7 +63,7 @@ class SessionRequest
   /// @throw Invalid argument on null handshake state
   SessionRequest(
       noise::HandshakeState* state,
-      const tini2p::data::Identity::hash_t& router_hash,
+      const data::Identity::hash_t& router_hash,
       const obfse_t::iv_t& iv)
       : state_(state),
         kdf_(state_),
@@ -104,16 +104,13 @@ class SessionRequest
  private:
   void Write(message_t& message)
   {
-    using tini2p::crypto::X25519;
-
     const exception::Exception ex{"SessionRequest", __func__};
 
     NoiseBuffer data /*output*/, payload /*input*/;
 
     // ensure enough room to hold Noise payload + padding
-    message.data.resize(
-        message_t::NoisePayloadSize
-        + static_cast<std::uint16_t>(message.options.pad_len));
+    message.data.resize(message_t::NoisePayloadSize + message.options.pad_len);
+    message.options.serialize();
 
     auto& in = message.options.buffer;
     auto& out = message.data;
@@ -123,7 +120,7 @@ class SessionRequest
     noise::write_message(state_, &data, &payload, ex);
 
     // encrypt ephemeral key in place
-    obfse_.Process<obfse_t::encrypt_m>(out.data(), X25519::PublicKeyLen);
+    obfse_.Encrypt(out.data(), crypto::X25519::PublicKeyLen);
 
     // save ciphertext for session created KDF
     std::copy_n(
@@ -143,8 +140,6 @@ class SessionRequest
 
   void Read(message_t& message)
   {
-    using tini2p::crypto::X25519;
-
     const exception::Exception ex{"SessionRequest", __func__};
 
     NoiseBuffer data /*input*/, payload /*output*/;
@@ -163,7 +158,7 @@ class SessionRequest
         message.ciphertext.data());
 
     // decrypt ephemeral key in place
-    obfse_.Process<obfse_t::decrypt_m>(in.data(), X25519::PublicKeyLen);
+    obfse_.Decrypt(in.data(), crypto::X25519::PublicKeyLen);
 
     noise::RawBuffers bufs{in.data(), in_size, out.data(), out.size()};
     noise::setup_buffers(payload, data, bufs);

@@ -52,6 +52,7 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Find NoiseC library
 find_package(NoiseC REQUIRED)
 if (NOT TARGET NoiseC::NoiseC)
   include(BuildNoiseC)
@@ -60,34 +61,25 @@ if (NOT TARGET NoiseC::NoiseC)
     message(FATAL_ERROR "Could not find NoiseC.")
   endif()
 endif()
-
 target_link_libraries(tini2p-priv INTERFACE NoiseC::NoiseC)
-
-# From Kovri project, along with associated find and build scripts
-find_package(CryptoPP REQUIRED)
-if(NOT TARGET CryptoPP::CryptoPP)
-  include(BuildCryptoPP)
-
-  if(NOT TARGET CryptoPP::CryptoPP)
-    message(FATAL_ERROR "Could not find Crypto++. See building instructions.")
-  endif()
-endif()
-
-target_link_libraries(tini2p-priv INTERFACE CryptoPP::CryptoPP)
-target_compile_definitions(tini2p-priv INTERFACE WITH_CRYPTOPP)
+# end-noise-c
 
 # Find libSodium crypto library
 find_package(sodium REQUIRED)
 if(NOT ${sodium_FOUND})
-  message(FATAL_ERROR "Could not find libSodium. See building instructions.")
+  message(FATAL_ERROR "libSodium not found or requirement not satisfied.")
 endif()
-
 target_include_directories(tini2p-priv INTERFACE ${sodium_INCLUDE_DIR})
 if(${CMAKE_BUILD_TYPE} EQUAL Debug)
   target_link_libraries(tini2p-priv INTERFACE ${sodium_LIBRARY_DEBUG})
 else()
   target_link_libraries(tini2p-priv INTERFACE ${sodium_LIBRARY_RELEASE})
 endif()
+# end-sodium
+
+# Include tiny-AES-c
+target_include_directories(tini2p-priv INTERFACE ${CMAKE_SOURCE_DIR}/deps/tiny-AES-c) 
+# end-tiny-AES-c
 
 find_package(Threads)
 target_link_libraries(tini2p-priv INTERFACE ${CMAKE_THREAD_LIBS_INIT})

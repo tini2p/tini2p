@@ -30,11 +30,13 @@
 #ifndef SRC_CRYPTO_AES_H_
 #define SRC_CRYPTO_AES_H_
 
-#include <cryptopp/aes.h>
-#include <cryptopp/modes.h>
+#include <algorithm>
+#include <memory>
+#include <vector>
+
+#include <aes.h>
 
 #include "src/exception/exception.h"
-#include "src/ntcp2/meta.h"
 
 #include "src/crypto/keys.h"
 #include "src/crypto/rand.h"
@@ -51,55 +53,13 @@ class AES
     KeyLen = 32,
     IVLen = 16,
     BlockLen = 16,
+    AESBits = 256,
   };
 
-  struct AESKey : public Key<KeyLen>
-  {
-    using base_t = Key<KeyLen>;
-
-    AESKey() : base_t() {}
-
-    AESKey(base_t::buffer_t buf) : base_t(std::forward<base_t::buffer_t>(buf))
-    {
-    }
-
-    AESKey(const SecBytes& buf) : base_t(buf) {}
-
-    AESKey(std::initializer_list<std::uint8_t> list) : base_t(list) {}
-  };
-
-  struct AESIV : public Key<IVLen>
-  {
-    using base_t = Key<IVLen>;
-
-    AESIV() : base_t() {}
-
-    AESIV(base_t::buffer_t buf) : base_t(std::forward<base_t::buffer_t>(buf)) {}
-
-    AESIV(const SecBytes& buf) : base_t(buf) {}
-
-    AESIV(std::initializer_list<std::uint8_t> list) : base_t(list) {}
-  };
-
-  struct AESBlock : public Key<BlockLen>
-  {
-    using base_t = Key<BlockLen>;
-
-    AESBlock() : base_t() {}
-
-    AESBlock(base_t::buffer_t buf) : base_t(std::forward<base_t::buffer_t>(buf)) {}
-
-    AESBlock(const SecBytes& buf) : base_t(buf) {}
-
-    AESBlock(std::initializer_list<std::uint8_t> list) : base_t(list) {}
-  };
-
-  using key_t = AESKey;  //< Key trait alias
-  using iv_t = AESIV;  //< IV trait alias
+  using key_t = Key<KeyLen>;  //< Key trait alias
+  using iv_t = FixedSecBytes<IVLen>;  //< IV trait alias
   using key_iv_t = KeyIV<AES>;  // KeyIV trait alias
-  using block_t = AESBlock;  //< Block trait alias
-  using encrypt_m = CryptoPP::CBC_Mode<CryptoPP::AES>::Encryption;  //< Encryption mode trait alias
-  using decrypt_m = CryptoPP::CBC_Mode<CryptoPP::AES>::Decryption;  //< Decryption mode trait alias
+  using block_t = FixedSecBytes<BlockLen>;  //< Block trait alias
 
   /// @brief Create a CBC en/decryption cipher
   /// @param key Cipher key (typically responder router hash)
@@ -112,13 +72,11 @@ class AES
            || std::is_same<Key, key_t::buffer_t>::value)
           && (std::is_same<IV, iv_t>::value
               || std::is_same<IV, iv_t::buffer_t>::value)>>
-  AES(const Key& key, const IV& iv)
-      : enc_(key.data(), key.size(), iv.data()),
-        dec_(key.data(), key.size(), iv.data())
+  AES(const Key& key, const IV& iv) : key_(key), iv_(iv)
   {
   }
 
-  /// @brief Reset the cipher with a new key and IV
+  /// @brief Create a CBC en/decryption cipher
   /// @param key Cipher key (typically responder router hash)
   /// @param iv Cipher IV
   template <
@@ -131,66 +89,31 @@ class AES
               || std::is_same<IV, iv_t::buffer_t>::value)>>
   void rekey(const Key& key, const IV& iv)
   {
-    enc_.SetKeyWithIV(key.data(), key.size(), iv.data(), iv.size());
-    dec_.SetKeyWithIV(key.data(), key.size(), iv.data(), iv.size());
+    std::copy_n(key.data(), KeyLen, key_.data());
+    std::copy_n(iv.data(), IVLen, iv_.data());
   }
 
-  /// @brief Process a buffer of data
-  /// @param out Output buffer for processing
-  /// @param out_len Output buffer length 
-  /// @param in Input buffer for processing
-  /// @param in_len Input buffer buffer length
-  template <
-      class Mode,
-      typename = std::enable_if_t<
-          std::is_same<Mode, encrypt_m>::value
-          || std::is_same<Mode, decrypt_m>::value>>
-  void Process(
-      std::uint8_t* out,
-      const std::size_t out_len,
-      const std::uint8_t* in,
-      const std::size_t in_len)
-  {
-    const tini2p::exception::Exception ex{"AES", __func__};
-
-    if (!out || !in)
-      ex.throw_ex<std::invalid_argument>("null buffers.");
-
-    if (!out_len || !in_len)
-      ex.throw_ex<std::invalid_argument>("null buffer lenghts.");
-
-    if (out_len != in_len)
-      ex.throw_ex<std::length_error>(
-          "input and output buffer must have same length.");
-
-    if (in_len % BlockLen != 0)
-      ex.throw_ex<std::length_error>(
-          "buffer must be a multiple of AES block size.");
-
-    if (std::is_same<Mode, encrypt_m>::value)
-      enc_.ProcessData(out, in, in_len);
-    else
-      dec_.ProcessData(out, in, in_len);
-  }
-
-  /// @brief Process a buffer of data (in-place)
+  /// @brief Encrypt a buffer of data (in-place)
   /// @param in_out In-place buffer for processing
   /// @param in_out_len In-place buffer length 
-  template <
-      class Mode,
-      typename = std::enable_if_t<
-          std::is_same<Mode, encrypt_m>::value
-          || std::is_same<Mode, decrypt_m>::value>>
-  void Process(
+  void Encrypt(
       std::uint8_t* in_out,
       const std::size_t in_out_len)
   {
-    Process<Mode>(in_out, in_out_len, in_out, in_out_len);
+    Process(in_out, in_out_len, Mode::Encrypt, {"AES", __func__});
+  }
+
+  /// @brief Decrypt a buffer of data (in-place)
+  /// @param out In-place buffer for processing
+  /// @param out_len In-place buffer length
+  void Decrypt(std::uint8_t* in_out, const std::size_t in_out_len)
+  {
+    Process(in_out, in_out_len, Mode::Decrypt, {"AES", __func__});
   }
 
   /// @brief Create an AES key and IV
   /// @return AES key and IV
-  inline static key_iv_t create_key_iv()
+  static key_iv_t create_key_iv()
   {
     key_iv_t k;
 
@@ -201,8 +124,39 @@ class AES
   }
 
  private:
-  encrypt_m enc_;
-  decrypt_m dec_;
+  enum struct Mode
+  {
+    Encrypt,
+    Decrypt,
+  };
+
+  void Process(
+      std::uint8_t* in_out,
+      const std::size_t in_out_len,
+      const Mode mode,
+      const exception::Exception& ex)
+  {
+    if (!in_out)
+      ex.throw_ex<std::invalid_argument>("null buffers.");
+
+    if (!in_out_len)
+      ex.throw_ex<std::invalid_argument>("null buffer lenghts.");
+
+    if (in_out_len % BlockLen != 0)
+      ex.throw_ex<std::length_error>(
+          "buffer must be a multiple of AES block size.");
+
+    AES_ctx ctx;
+    AES_init_ctx_iv(&ctx, key_.data(), iv_.data());
+
+    if (mode == Mode::Encrypt)
+      AES_CBC_encrypt_buffer(&ctx, in_out, in_out_len);
+    else
+      AES_CBC_decrypt_buffer(&ctx, in_out, in_out_len);
+  }
+
+  key_t key_;
+  iv_t iv_;
 };
 }  // namespace crypto
 }  // namespace tini2p
