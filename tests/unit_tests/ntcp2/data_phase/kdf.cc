@@ -29,8 +29,6 @@
 
 #include <catch2/catch.hpp>
 
-#include "src/ntcp2/data_phase/kdf.h"
-
 #include "tests/unit_tests/mock/handshake.h"
 
 struct DataPhaseKDFFixture : public MockHandshake

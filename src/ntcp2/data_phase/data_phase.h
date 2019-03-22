@@ -60,10 +60,6 @@ class DataPhase
   class KDF
   {
    public:
-    using sip_key_part_t = crypto::hash::SipHashKeyPart;  //< SipHash key part trait alias
-    using sip_iv_t = crypto::hash::SipHashIV;  //< SipHash IV trait alias
-    using handshake_hash_t = crypto::Sha256::digest_t;  //< Hash trait alias
-
     /// @brief Create a DataPhaseKDF from a given handshake state and initial role
     /// @param state Pointer to valid Noise handshake state
     /// @param role Noise role during first DataPhase message
@@ -105,7 +101,7 @@ class DataPhase
     }
 
     /// @brief Get a const reference to the final handshake hash
-    const handshake_hash_t& hash() const noexcept
+    decltype(auto) hash() const noexcept
     {
       return h_;
     }
@@ -120,50 +116,47 @@ class DataPhase
    private:
     void InitSipKeys(crypto::X25519::pubkey_t& temp_key)
     {
-      using tini2p::crypto::HmacSha256;
-      using ask_str_t = crypto::FixedSecBytes<AskStringLen>;
-      using sip_str_t = crypto::FixedSecBytes<SipStringLen>;
-      using sip_master_in_t = crypto::FixedSecBytes<SipMasterInLen>;
-      using null_t = std::array<std::uint8_t, 0>;
-
-      sip_master_in_t sip_master_in;
+      crypto::FixedSecBytes<SipMasterInLen> sip_master_in;
 
       // concat handshake hash: h || "siphash"
-      tini2p::BytesWriter<sip_master_in_t> sip_in_writer(sip_master_in);
+      tini2p::BytesWriter<decltype(sip_master_in)> sip_in_writer(sip_master_in);
       sip_in_writer.write_data(h_);
-      sip_in_writer.write_data(
-          sip_str_t{{0x73, 0x69, 0x70, 0x68, 0x61, 0x73, 0x68}});
+      sip_in_writer.write_data(crypto::FixedSecBytes<SipStringLen>{
+          {0x73, 0x69, 0x70, 0x68, 0x61, 0x73, 0x68}});
 
-      HmacSha256::digest_t ask_master, sip_master;
+      crypto::HmacSha256::digest_t ask_master, sip_master;
 
       constexpr static const std::array<std::uint8_t, 1> one_byte{0x01};
 
       // Derive SipHash temp key from handshake temp key
-      HmacSha256::Hash(
-          temp_key.buffer(), ask_str_t{{0x61, 0x73, 0x6B, 0x01}}, ask_master);
-      HmacSha256::Hash(ask_master, sip_master_in, temp_key.buffer());
-      HmacSha256::Hash(temp_key.buffer(), one_byte, sip_master);
-      HmacSha256::Hash(sip_master, null_t{}, temp_key.buffer());
+      crypto::HmacSha256::Hash(
+          temp_key.buffer(),
+          crypto::FixedSecBytes<AskStringLen>{{0x61, 0x73, 0x6B, 0x01}},
+          ask_master);
+      crypto::HmacSha256::Hash(ask_master, sip_master_in, temp_key.buffer());
+      crypto::HmacSha256::Hash(temp_key.buffer(), one_byte, sip_master);
+      crypto::HmacSha256::Hash(
+          sip_master, std::array<std::uint8_t, 0>{}, temp_key.buffer());
 
-      HmacSha256::digest_t sip_keys_ab, sip_keys_ba;
+      crypto::HmacSha256::digest_t sip_keys_ab, sip_keys_ba;
 
       // Derive SipHash keys for Alice to Bob
-      HmacSha256::Hash(temp_key.buffer(), one_byte, sip_keys_ab);
+      crypto::HmacSha256::Hash(temp_key.buffer(), one_byte, sip_keys_ab);
 
-      tini2p::BytesReader<HmacSha256::digest_t> ab_reader(sip_keys_ab);
+      BytesReader<crypto::HmacSha256::digest_t> ab_reader(sip_keys_ab);
       ab_reader.read_data(key_pt1_ab_);
       ab_reader.read_data(key_pt2_ab_);
       ab_reader.read_data(iv_ab_);
 
-      crypto::FixedSecBytes<HmacSha256::DigestLen + 1> sip_keys_ba_in;
+      crypto::FixedSecBytes<crypto::HmacSha256::DigestLen + 1> sip_keys_ba_in;
       tini2p::BytesWriter<decltype(sip_keys_ba_in)> sip_ba_in_writer(sip_keys_ba_in);
       sip_ba_in_writer.write_data(sip_keys_ab);
       sip_ba_in_writer.write_bytes<std::uint8_t>(0x02);
 
       // Derive SipHash keys for Bob to Alice
-      HmacSha256::Hash(temp_key.buffer(), sip_keys_ba_in, sip_keys_ba);
+      crypto::HmacSha256::Hash(temp_key.buffer(), sip_keys_ba_in, sip_keys_ba);
 
-      tini2p::BytesReader<HmacSha256::digest_t> ba_reader(sip_keys_ba);
+      tini2p::BytesReader<crypto::HmacSha256::digest_t> ba_reader(sip_keys_ba);
       ba_reader.read_data(key_pt1_ba_);
       ba_reader.read_data(key_pt2_ba_);
       ba_reader.read_data(iv_ba_);
@@ -172,16 +165,16 @@ class DataPhase
     boost::endian::big_uint16_t DeriveMask(const message_t::Dir direction)
     {
       boost::endian::big_uint16_t mask;
-      crypto::hash::SipHashDigest digest;
+      crypto::SipHash::digest_t digest;
       if (direction == message_t::Dir::AliceToBob)
         {
-          crypto::hash::SipHash(key_pt1_ab_, key_pt2_ab_, iv_ab_, digest);
+          crypto::SipHash::Hash(key_pt1_ab_, key_pt2_ab_, iv_ab_, digest);
           std::copy(
               digest.begin(), digest.begin() + iv_ab_.size(), iv_ab_.begin());
         }
       else
         {
-          crypto::hash::SipHash(key_pt1_ba_, key_pt2_ba_, iv_ba_, digest);
+          crypto::SipHash::Hash(key_pt1_ba_, key_pt2_ba_, iv_ba_, digest);
           std::copy(
               digest.begin(), digest.begin() + iv_ba_.size(), iv_ba_.begin());
         }
@@ -189,9 +182,10 @@ class DataPhase
       return mask;
     }
 
-    sip_key_part_t key_pt1_ab_, key_pt2_ab_, key_pt1_ba_, key_pt2_ba_;
-    sip_iv_t iv_ab_, iv_ba_;
-    handshake_hash_t h_;
+    crypto::SipHash::key_part_t key_pt1_ab_, key_pt2_ab_, key_pt1_ba_,
+        key_pt2_ba_;
+    crypto::SipHash::iv_t iv_ab_, iv_ba_;
+    crypto::Sha256::digest_t h_;
     state_t* state_;
     noise::CipherState* alice_to_bob_;
     noise::CipherState* bob_to_alice_;
