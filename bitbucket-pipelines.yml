@@ -1,0 +1,16 @@
+# This is a sample build configuration for C++ – Make.
+# Check our guides at https://confluence.atlassian.com/x/5Q4SMw for more examples.
+# Only use spaces to indent your .yml configuration.
+# -----
+# You can specify a custom docker image from Docker Hub as your build environment.
+image: tini2p/tini2p-ci
+
+pipelines:
+  default:
+    - step:
+        script: # Modify the commands below to build your repository.
+        - git submodule sync --recursive
+        - git submodule update --init --recursive
+        - make -j2 coverage
+        - ./build/tini2p-tests
+        - coveralls -b $(pwd) -e deps -e tests --exclude-lines-pattern "/usr/{lib,include}/*"
