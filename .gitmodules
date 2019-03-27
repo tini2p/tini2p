@@ -4,3 +4,6 @@
 [submodule "deps/tiny-AES-c"]
 	path = deps/tiny-AES-c
 	url = https://gitlab.com/tini2p/tiny-AES-c.git
+[submodule "deps/libressl"]
+	path = deps/libressl
+	url = https://gitlab.com/tini2p/libressl.git

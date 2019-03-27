@@ -31,6 +31,7 @@
 cmake_minimum_required(VERSION 3.10 FATAL_ERROR)
 project(tini2p-priv CXX)
 
+option(WITH_LIBRESSL "Build with LibreSSL" ON)
 option(WITH_COVERAGE "Build with coverage instrumentation" OFF)
 option(WITH_TESTS "Build test suite" OFF)
 option(WITH_NET_TESTS "Build net test suite" OFF)
@@ -51,6 +52,34 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 # Require C++14 support (minimum version compilers guarantee this)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Find OpenSSL/LibreSSL library
+function(AddLibreSSL)
+  set(LibreSSL_ROOT_DIR ${CMAKE_SOURCE_DIR}/deps/libressl)
+  find_package(LibreSSL)
+  if (NOT ${LibreSSL_FOUND})
+    include(BuildLibreSSL)
+    if (NOT TARGET LibreSSL::LibreSSL)
+      message(FATAL_ERROR "SSL dependency not found or requirement not satisfied.")
+    endif()
+  endif()
+
+  target_include_directories(tini2p-priv INTERFACE ${LibreSSL_INCLUDE_DIR})
+  target_link_libraries(tini2p-priv INTERFACE ${LibreSSL_LIBRARIES})
+endfunction()
+
+if (NOT ${WITH_LIBRESSL})
+  find_package(OpenSSL OPTIONAL)
+  if (NOT ${OpenSSL_FOUND})
+    AddLibreSSL()
+  else()
+    target_include_directories(tini2p-priv INTERFACE ${OpenSSL_INCLUDE_DIR})
+    target_link_libraries(tini2p-priv INTERFACE ${OpenSSL_LIBRARIES})
+  endif()
+else()
+  AddLibreSSL()
+endif()
+# end-ssl
 
 # Find NoiseC library
 find_package(NoiseC REQUIRED)
