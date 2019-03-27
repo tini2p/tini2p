@@ -30,55 +30,51 @@
 #ifndef SRC_CRYPTO_HASH_SIPHASH_H_
 #define SRC_CRYPTO_HASH_SIPHASH_H_
 
-#include <cryptopp/siphash.h>
+#include <sodium.h>
+
+#include "src/bytes.h"
 
 #include "src/crypto/rand.h"
+#include "src/crypto/sec_bytes.h"
 
 namespace tini2p
 {
 namespace crypto
 {
-namespace hash
+struct SipHash
 {
-enum
-{
-  SipHashLen = 16,
-  SipHashKeyLen = 16,
-  SipHashKeyPartLen = 8,
-  SipHashIVLen = 8,
+  enum
+  {
+    DigestLen = 16,
+    KeyLen = 16,
+    KeyPartLen = 8,
+    IVLen = 8,
+  };
+
+  using digest_t = FixedSecBytes<DigestLen>;  //< Digest trait alias
+  using key_t = FixedSecBytes<KeyLen>;  //< Key trait alias
+  using key_part_t = FixedSecBytes<KeyPartLen>;  //< Key part trait alias
+  using iv_t = FixedSecBytes<IVLen>;  //< IV trait alias
+
+  /// @brief Calculate a SipHash digest using key parts from DataPhase KDF
+  /// @param key_pt1 Part one key from DataPhase KDF
+  /// @param key_pt2 Part two key from DataPhase KDF
+  /// @param iv IV from DataPhase KDF or following message round, see spec
+  static void Hash(
+      const key_part_t& key_pt1,
+      const key_part_t& key_pt2,
+      const iv_t& iv,
+      digest_t& digest)
+  {
+    key_t key;
+    BytesWriter<key_t> writer(key);
+    writer.write_data(key_pt1);
+    writer.write_data(key_pt2);
+
+    crypto_shorthash_siphashx24(
+        digest.data(), iv.data(), iv.size(), key.data());
+  }
 };
-
-/// @alias SipHash digest alias for correctness, clarity, and usability
-using SipHashDigest = std::array<std::uint8_t, SipHashLen>;
-
-/// @alias SipHash key part alias for correctness, clarity, and usability
-using SipHashKeyPart = std::array<std::uint8_t, SipHashKeyPartLen>;
-
-/// @alias SipHash IV alias for correctness, clarity, and usability
-using SipHashIV = std::array<std::uint8_t, SipHashIVLen>;
-
-/// @brief Calculate a SipHash digest using key parts from DataPhase KDF
-/// @param key_pt1 Part one key from DataPhase KDF
-/// @param key_pt2 Part two key from DataPhase KDF
-/// @param iv IV from DataPhase KDF or following message round, see spec
-inline void SipHash(
-    const SipHashKeyPart& key_pt1,
-    const SipHashKeyPart& key_pt2,
-    const SipHashIV& iv,
-    SipHashDigest& digest)
-{
-  std::array<std::uint8_t, SipHashKeyLen> key;
-  std::copy(key_pt1.begin(), key_pt2.end(), key.begin());
-  std::copy(key_pt2.begin(), key_pt2.end(), key.begin() + key_pt1.size());
-
-  CryptoPP::SipHash<2, 4, true> hash(key.data(), key.size());
-  hash.Update(iv.data(), iv.size());
-  hash.TruncatedFinal(digest.data(), digest.size());
-
-  // overwrite the temporary key
-  RandBytes(key.data(), key.size());
-}
-}  // namespace hash
 }  // namespace crypto
 }  // namespace tini2p
 

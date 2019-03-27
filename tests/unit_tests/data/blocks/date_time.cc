@@ -34,10 +34,11 @@
 namespace meta = tini2p::meta::block;
 
 using tini2p::time::now_s;
+using tini2p::data::DateTimeBlock;
 
 struct DateTimeBlockFixture
 {
-  tini2p::data::DateTimeBlock block;
+  DateTimeBlock block;
 };
 
 TEST_CASE_METHOD(
@@ -45,13 +46,14 @@ TEST_CASE_METHOD(
     "DateTimeBlock has a block ID",
     "[block]")
 {
-  REQUIRE(block.type() == meta::DateTimeID);
+  REQUIRE(block.type() == DateTimeBlock::Type::DateTime);
 }
 
 TEST_CASE_METHOD(DateTimeBlockFixture, "DateTimeBlock has a size", "[block]")
 {
-  REQUIRE(block.data_size() == meta::TimestampSize);
-  REQUIRE(block.size() == meta::HeaderSize + meta::TimestampSize);
+  REQUIRE(block.data_size() == DateTimeBlock::TimestampLen);
+  REQUIRE(
+      block.size() == DateTimeBlock::HeaderLen + DateTimeBlock::TimestampLen);
   REQUIRE(block.size() == block.buffer().size());
 }
 
@@ -78,10 +80,11 @@ TEST_CASE_METHOD(
   // deserialize from buffer
   REQUIRE_NOTHROW(block.deserialize());
 
-  REQUIRE(block.type() == meta::DateTimeID);
-  REQUIRE(block.data_size() == meta::TimestampSize);
+  REQUIRE(block.type() == DateTimeBlock::Type::DateTime);
+  REQUIRE(block.data_size() == DateTimeBlock::TimestampLen);
   REQUIRE(block.timestamp() == tmp_ts);
-  REQUIRE(block.size() == meta::HeaderSize + meta::TimestampSize);
+  REQUIRE(
+      block.size() == DateTimeBlock::HeaderLen + DateTimeBlock::TimestampLen);
   REQUIRE(block.buffer().size() == block.size());
 }
 
@@ -94,10 +97,10 @@ TEST_CASE_METHOD(
   REQUIRE_NOTHROW(block.serialize());
 
   // invalidate the block ID
-  ++block.buffer()[meta::TypeOffset];
+  ++block.buffer()[DateTimeBlock::TypeOffset];
   REQUIRE_THROWS(block.deserialize());
 
-  block.buffer()[meta::TypeOffset] -= 2;
+  block.buffer()[DateTimeBlock::TypeOffset] -= 2;
   REQUIRE_THROWS(block.deserialize());
 }
 
@@ -107,10 +110,10 @@ TEST_CASE_METHOD(
     "[block]")
 {
   // invalidate the size 
-  ++block.buffer()[meta::SizeOffset];
+  ++block.buffer()[DateTimeBlock::SizeOffset];
   REQUIRE_THROWS(block.deserialize());
 
-  block.buffer()[meta::SizeOffset] -= 2;
+  block.buffer()[DateTimeBlock::SizeOffset] -= 2;
   REQUIRE_THROWS(block.deserialize());
 }
 
@@ -125,10 +128,10 @@ TEST_CASE_METHOD(
   REQUIRE_NOTHROW(block.serialize());
 
   // invalidate the timestamp (lowerbound) 
-  block.buffer()[meta::TimestampOffset] -= MaxLagDelta + 1;
+  block.buffer()[DateTimeBlock::TimestampOffset] -= MaxLagDelta + 1;
   REQUIRE_THROWS(block.deserialize());
 
   // invalidate the timestamp (upperbound)
-  block.buffer()[meta::TimestampOffset] = now_s() + (MaxLagDelta + 1);
+  block.buffer()[DateTimeBlock::TimestampOffset] = now_s() + (MaxLagDelta + 1);
   REQUIRE_THROWS(block.deserialize());
 }

@@ -31,17 +31,18 @@
 
 #include "src/data/router/identity.h"
 
-namespace meta = tini2p::meta::crypto;
 namespace crypto = tini2p::crypto;
+
+using Identity = tini2p::data::Identity;
+using crypto_t = Identity::ecies_x25519_hmac_t;
+using signing_t = Identity::eddsa_t;
 
 struct RouterIdentityFixture
 {
-  RouterIdentityFixture()
-      : identity(crypto::elgamal::create_keys(), crypto::ed25519::create_keys())
-  {
-  }
 
-  tini2p::data::Identity identity;
+  RouterIdentityFixture() : identity() {}
+
+  Identity identity;
 };
 
 TEST_CASE_METHOD(
@@ -49,8 +50,8 @@ TEST_CASE_METHOD(
     "RouterIdentity has a crypto public key",
     "[ident]")
 {
-  REQUIRE_NOTHROW(identity.crypto()->pub_key());
-  REQUIRE_NOTHROW(identity.crypto()->pub_key().size() == crypto::elgamal::PubKeyLen);
+  REQUIRE_NOTHROW(boost::get<crypto_t>(identity.crypto()).pubkey());
+  REQUIRE(identity.crypto_pubkey_len() == crypto_t::PublicKeyLen);
 }
 
 TEST_CASE_METHOD(
@@ -58,31 +59,28 @@ TEST_CASE_METHOD(
     "RouterIdentity has a signing public key",
     "[ident]")
 {
-
-  REQUIRE_NOTHROW(identity.signing()->pub_key());
-  REQUIRE_NOTHROW(identity.signing()->pub_key().size() == crypto::ed25519::PubKeyLen);
+  REQUIRE_NOTHROW(boost::get<signing_t>(identity.signing()).pubkey());
+  REQUIRE_NOTHROW(identity.signing_pubkey_len() == signing_t::PublicKeyLen);
 }
 
 TEST_CASE_METHOD(RouterIdentityFixture, "RouterIdentity has a cert", "[ident]")
 {
-  namespace cert_m = tini2p::meta::router::cert;
-
   REQUIRE_NOTHROW(identity.cert());
 
   const auto& cert = identity.cert();
-  REQUIRE(cert.cert_type == cert_m::KeyCert);
-  REQUIRE(cert.length == cert_m::KeyCertSize);
-  REQUIRE(cert.sign_type == cert_m::Ed25519Sign);
-  REQUIRE(cert.crypto_type == cert_m::ElGamalCrypto);
+  REQUIRE(cert.cert_type == Identity::cert_t::cert_type_t::KeyCert);
+  REQUIRE(cert.length == Identity::cert_t::KeyCertSize);
+  REQUIRE(cert.sign_type == Identity::cert_t::sign_type_t::EdDSA);
+  REQUIRE(cert.crypto_type == Identity::cert_t::crypto_type_t::EciesX25519);
 }
 
-TEST_CASE_METHOD(RouterIdentityFixture, "RouterIdentity has a size", "[ident]")
+TEST_CASE_METHOD(RouterIdentityFixture, "RouterIdentity has a valid size", "[ident]")
 {
   REQUIRE_NOTHROW(identity.size());
 
-  const auto expected_len =
-      identity.crypto()->pub_key().size() + identity.padding_len()
-      + identity.signing()->pub_key().size() + identity.cert().length;
+  const auto keys_len = crypto_t::PublicKeyLen + signing_t::PublicKeyLen;
+  const auto expected_len = keys_len + (Identity::KeysPaddingLen - keys_len)
+                            + Identity::cert_t::KeyCertSize;
 
   REQUIRE(identity.size() == expected_len);
 }
@@ -92,8 +90,28 @@ TEST_CASE_METHOD(
     "RouterIdentity serializes and deserializes a valid router identity",
     "[ident]")
 {
+  using Catch::Matchers::Equals;
+  using vec = std::vector<std::uint8_t>;
+
   REQUIRE_NOTHROW(identity.serialize());
   REQUIRE_NOTHROW(identity.deserialize());
+
+  REQUIRE_NOTHROW(Identity(identity.buffer()));
+  Identity ident_copy(identity.buffer());
+
+  REQUIRE_THAT(
+      static_cast<vec>(ident_copy.buffer()),
+      Equals(static_cast<vec>(identity.buffer())));
+
+  REQUIRE_THAT(
+      static_cast<vec>(ident_copy.padding()),
+      Equals(static_cast<vec>(identity.padding())));
+
+  const auto& signing = boost::get<signing_t>(identity.signing());
+  const auto& sigkey0 = signing.pubkey();
+  const auto& sigkey1 = signing.pubkey();
+
+  REQUIRE_THAT(vec(sigkey0.begin(), sigkey0.end()), Equals(vec(sigkey1.begin(), sigkey1.end())));
 }
 
 TEST_CASE_METHOD(
@@ -102,11 +120,12 @@ TEST_CASE_METHOD(
     "[ident]")
 {
   std::array<std::uint8_t, 13> msg{};
-  crypto::ed25519::Signature signature;
+  Identity::eddsa_t::signature_t signature;
 
-  const auto* signing = identity.signing();
-  REQUIRE_NOTHROW(signing->Sign(msg.data(), msg.size(), signature));
-  REQUIRE(signing->Verify(msg.data(), msg.size(), signature));
+  Identity::signature_v sig;
+
+  REQUIRE_NOTHROW(sig = identity.Sign(msg.data(), msg.size()));
+  REQUIRE(identity.Verify(msg.data(), msg.size(), sig));
 }
 
 TEST_CASE_METHOD(
@@ -116,23 +135,28 @@ TEST_CASE_METHOD(
 {
   using Catch::Matchers::Equals;
   using vec = std::vector<std::uint8_t>;
+  using crypto_t = Identity::ecies_x25519_hmac_t;
 
-  crypto::elgamal::Plaintext plaintext, result;
-  crypto::elgamal::Ciphertext ciphertext;
-  constexpr bool zero_pad[2] = {false, true};
+  crypto_t::message_t message, result;
+  crypto_t::ciphertext_t ciphertext;
 
-  crypto::RandBytes(plaintext.data(), plaintext.size());
+  crypto::RandBytes(message);
 
-  auto* id_crypto = identity.crypto();
-  for (const auto& pad : zero_pad)
-    {
-      REQUIRE_NOTHROW(id_crypto->Encrypt(ciphertext, plaintext, pad));
-      REQUIRE_NOTHROW(id_crypto->Decrypt(result, ciphertext, pad));
+  crypto_t::keypair_t r_id_keys(crypto_t::create_keys()), r_ep_keys;
 
-      REQUIRE_THAT(
-          vec(plaintext.begin(), plaintext.end()),
-          Equals(vec(result.begin(), result.end())));
-    }
+  // derive realistic mock remote id + ephemeral keypairs
+  REQUIRE_NOTHROW(crypto_t::curve_t::DeriveEphemeralKeys(
+      r_id_keys, r_ep_keys, crypto_t::context_t("testctx")));
+
+  Identity full_ident;
+  full_ident.rekey<crypto_t>(r_id_keys.pubkey, r_ep_keys.pubkey);
+
+  REQUIRE_NOTHROW(full_ident.Encrypt<crypto_t>(message, ciphertext));
+  REQUIRE_NOTHROW(full_ident.Decrypt<crypto_t>(result, ciphertext));
+
+  REQUIRE_THAT(
+      vec(message.begin(), message.end()),
+      Equals(vec(result.begin(), result.end())));
 }
 
 TEST_CASE_METHOD(
@@ -140,35 +164,49 @@ TEST_CASE_METHOD(
     "RouterIdentity rejects deserializing an invalid cert",
     "[ident]")
 {
-  auto cert_data =
-      identity.buffer().data() + (identity.size() - identity.cert().length);
+  auto cert_data = identity.buffer().data() + Identity::CertOffset;
 
-  // invalidate the cert
-  crypto::RandBytes(cert_data, identity.cert().length);
+  // invalidate the cert length
+  tini2p::BytesWriter<Identity::buffer_t> writer(identity.buffer());
+  writer.skip_bytes(Identity::CertOffset + Identity::cert_t::LengthOffset);
+  writer.write_bytes<Identity::cert_t::length_t>(0x42);
 
   REQUIRE_THROWS(identity.deserialize());
+
+  // reset length, overwrite signing + crypto types with random data
+  writer.skip_back(Identity::cert_t::LengthLen);
+  writer.write_bytes(Identity::cert_t::length_t(0x07));
+  writer.write_bytes(tini2p::crypto::RandInRange());
+
+  REQUIRE_NOTHROW(identity.deserialize());
+  REQUIRE(identity.cert().locally_unreachable());
 }
 
-TEST_CASE("RouterIdentity rejects decryption without a private key", "[ident]")
+TEST_CASE_METHOD(
+    RouterIdentityFixture,
+    "RouterIdentity rejects decryption without remote keys",
+    "[ident]")
 {
-  crypto::elgamal::PubKey crypto_pk;
-  crypto::ed25519::PubKey sign_pk;
-  tini2p::data::Identity ident(crypto_pk, sign_pk);
+  // unrealistic, mock identity and ephemeral remote public keys
+  crypto_t::keypair_t crypto_keys;
+  Identity ident;
 
-  crypto::elgamal::Plaintext plaintext;
-  crypto::elgamal::Ciphertext ciphertext;
+  crypto_t::message_t message;
+  crypto_t::ciphertext_t ciphertext;
 
-  REQUIRE_THROWS(ident.crypto()->Decrypt(plaintext, ciphertext, {}));
+  REQUIRE_THROWS(ident.Decrypt<crypto_t>(message, ciphertext));
 }
 
-TEST_CASE("RouterIdentity rejects signing without a private key", "[ident]")
+TEST_CASE_METHOD(
+    RouterIdentityFixture,
+    "RouterIdentity rejects signing without a private key",
+    "[ident]")
 {
-  crypto::elgamal::PubKey crypto_pk;
-  crypto::ed25519::PubKey sign_pk;
-  tini2p::data::Identity ident(crypto_pk, sign_pk);
+  Identity ident;
+  ident.rekey<signing_t>(signing_t::pubkey_t{});
 
   std::array<std::uint8_t, 7> msg{};
-  crypto::ed25519::Signature signature;
+  Identity::signature_v sig;
 
-  REQUIRE_THROWS(ident.signing()->Sign(msg.data(), msg.size(), signature));
+  REQUIRE_THROWS(sig = ident.Sign(msg.data(), msg.size()));
 }

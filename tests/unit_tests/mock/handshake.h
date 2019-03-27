@@ -29,35 +29,51 @@
 
 #include <catch2/catch.hpp>
 
+#include "src/ntcp2/role.h"
+
 #include "src/ntcp2/session_request/session_request.h"
 #include "src/ntcp2/session_created/session_created.h"
 #include "src/ntcp2/session_confirmed/session_confirmed.h"
 #include "src/ntcp2/data_phase/data_phase.h"
+#include "src/ntcp2/session/session.h"
 
 namespace crypto = tini2p::crypto;
 namespace exception = tini2p::exception;
 namespace meta = tini2p::meta::ntcp2;
 
-using namespace tini2p::ntcp2;
-
 /// @brief Container for performing a valid mock handshake
 struct MockHandshake
 {
+  using Initiator = tini2p::ntcp2::Initiator;
+  using Responder = tini2p::ntcp2::Responder;
+
+  using state_t = NoiseHandshakeState;
+  using obfse_t = tini2p::crypto::AES;
+  using sess_init_t = tini2p::ntcp2::Session<Initiator>;
+  using sess_resp_t = tini2p::ntcp2::Session<Responder>;
+
+  using request_msg_t = tini2p::ntcp2::SessionRequestMessage;
+  using created_msg_t = tini2p::ntcp2::SessionCreatedMessage;
+  using confirmed_msg_t = tini2p::ntcp2::SessionConfirmedMessage;
+  using data_msg_t = tini2p::ntcp2::DataPhaseMessage;
+
   MockHandshake()
       : remote_info(new tini2p::data::Info()),
         local_info(new tini2p::data::Info()),
         sco_message(
-            local_info.get(),
+            local_info,
             crypto::RandInRange(
-                meta::session_confirmed::MinPaddingSize,
-                meta::session_confirmed::MaxPaddingSize)),
+                confirmed_msg_t::MinPaddingSize,
+                confirmed_msg_t::MaxPaddingSize - local_info->size())),
         srq_message(
             sco_message.payload_size(),
             crypto::RandInRange(
-                meta::session_request::MinPaddingSize,
-                meta::session_request::MaxPaddingSize)),
+                request_msg_t::MinPaddingSize,
+                request_msg_t::MaxPaddingSize)),
         scr_message()
   {
+    namespace noise = tini2p::ntcp2::noise;
+
     const exception::Exception ex{"MockHandshake", __func__};
 
     noise::init_handshake<Initiator>(&initiator_state, ex);
@@ -71,10 +87,10 @@ struct MockHandshake
   {
     const auto& ident_hash = remote_info->identity().hash();
 
-    srq_initiator = std::make_unique<SessionRequest<Initiator>>(
+    srq_initiator = std::make_unique<sess_init_t::request_impl_t>(
         initiator_state, ident_hash, remote_info->iv());
 
-    srq_responder = std::make_unique<SessionRequest<Responder>>(
+    srq_responder = std::make_unique<sess_resp_t::request_impl_t>(
         responder_state, ident_hash, remote_info->iv());
   }
 
@@ -83,10 +99,10 @@ struct MockHandshake
   {
     srq_responder->kdf().generate_keys();
     srq_responder->kdf().get_local_public_key(remote_key);
-    srq_responder->kdf().derive_keys();
+    srq_responder->kdf().Derive();
 
     srq_initiator->kdf().generate_keys();
-    srq_initiator->kdf().derive_keys(remote_key);
+    srq_initiator->kdf().Derive(remote_key);
 
     srq_initiator->ProcessMessage(srq_message);
     srq_responder->ProcessMessage(srq_message);
@@ -96,10 +112,10 @@ struct MockHandshake
   /// @detail Roles are switched according to Noise spec
   void InitializeSessionCreated()
   {
-    scr_initiator = std::make_unique<SessionCreated<Initiator>>(
+    scr_initiator = std::make_unique<sess_resp_t::created_impl_t>(
         responder_state, srq_message, router_hash, iv);
 
-    scr_responder = std::make_unique<SessionCreated<Responder>>(
+    scr_responder = std::make_unique<sess_init_t::created_impl_t>(
         initiator_state, srq_message, router_hash, iv);
   }
 
@@ -116,10 +132,10 @@ struct MockHandshake
   /// @detail Roles are switched according to Noise spec
   void InitializeSessionConfirmed()
   {
-    sco_initiator = std::make_unique<SessionConfirmed<Initiator>>(
+    sco_initiator = std::make_unique<sess_init_t::confirmed_impl_t>(
         initiator_state, scr_message);
 
-    sco_responder = std::make_unique<SessionConfirmed<Responder>>(
+    sco_responder = std::make_unique<sess_resp_t::confirmed_impl_t>(
         responder_state, scr_message);
   }
 
@@ -135,33 +151,36 @@ struct MockHandshake
   /// @brief Initialize a DataPhase exchange after successful SessionConfirmed exchange
   void InitializeDataPhase()
   {
-    dp_initiator = std::make_unique<DataPhase<Initiator>>(responder_state);
-    dp_responder = std::make_unique<DataPhase<Responder>>(initiator_state);
+    dp_initiator = std::make_unique<sess_resp_t::data_impl_t>(responder_state);
+    dp_responder = std::make_unique<sess_init_t::data_impl_t>(initiator_state);
   }
 
-  NoiseHandshakeState *initiator_state, *responder_state;
+  state_t* initiator_state;
+  state_t* responder_state;
 
-  crypto::x25519::PubKey remote_key;
-  tini2p::data::IdentHash router_hash;
-  crypto::aes::IV iv;
-  std::unique_ptr<tini2p::data::Info> remote_info, local_info;
+  crypto::X25519::pubkey_t remote_key;
+  tini2p::data::Identity::hash_t router_hash;
+  obfse_t::iv_t iv;
+  tini2p::data::Info::shared_ptr remote_info, local_info;
 
   // handshake messages, session confirmed must be initialized first to initialize the session request message
-  SessionConfirmedMessage sco_message;
-  SessionRequestMessage srq_message;
-  SessionCreatedMessage scr_message;
-  DataPhaseMessage dp_message;
+  confirmed_msg_t sco_message;
+  request_msg_t srq_message;
+  created_msg_t scr_message;
+  data_msg_t dp_message;
 
   // handshake message handlers
-  std::unique_ptr<SessionRequest<Initiator>> srq_initiator; 
-  std::unique_ptr<SessionRequest<Responder>> srq_responder; 
+  std::unique_ptr<sess_init_t::request_impl_t> srq_initiator; 
+  std::unique_ptr<sess_resp_t::request_impl_t> srq_responder; 
 
-  std::unique_ptr<SessionCreated<Initiator>> scr_initiator; 
-  std::unique_ptr<SessionCreated<Responder>> scr_responder; 
+  // switch roles, see spec
+  std::unique_ptr<sess_resp_t::created_impl_t> scr_initiator; 
+  std::unique_ptr<sess_init_t::created_impl_t> scr_responder; 
 
-  std::unique_ptr<SessionConfirmed<Initiator>> sco_initiator; 
-  std::unique_ptr<SessionConfirmed<Responder>> sco_responder; 
+  std::unique_ptr<sess_init_t::confirmed_impl_t> sco_initiator; 
+  std::unique_ptr<sess_resp_t::confirmed_impl_t> sco_responder; 
 
-  std::unique_ptr<DataPhase<Initiator>> dp_initiator; 
-  std::unique_ptr<DataPhase<Responder>> dp_responder; 
+  // switch roles, see spec
+  std::unique_ptr<sess_resp_t::data_impl_t> dp_initiator; 
+  std::unique_ptr<sess_init_t::data_impl_t> dp_responder; 
 };

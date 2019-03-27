@@ -32,214 +32,58 @@
 
 #include <noise/protocol/handshakestate.h>
 
-#include "src/ntcp2/session_request/options.h"
-
-#include "src/ntcp2/session_created/kdf.h"
-
 #include "src/data/blocks/options.h"
 #include "src/data/blocks/padding.h"
-#include "src/data/blocks/router_info.h"
+#include "src/data/blocks/info.h"
 
-#include "src/ntcp2/session_confirmed/meta.h"
+#include "src/ntcp2/session_request/message.h"
+#include "src/ntcp2/session_created/message.h"
+#include "src/ntcp2/session_confirmed/message.h"
 
 namespace tini2p
 {
 namespace ntcp2
 {
-/// @brief Container for session created message
-struct SessionConfirmedMessage
-{
-  std::vector<std::uint8_t> data, payload;
-  tini2p::data::RouterInfoBlock ri_block;
-  tini2p::data::OptionsBlock opt_block;
-  tini2p::data::PaddingBlock pad_block;
-
-  explicit SessionConfirmedMessage(const std::uint16_t size)
-      : data(size), ri_block(), opt_block(), pad_block()
-  {
-  }
-
-  /// @brief Create a SessionConfirmedMessage from a RouterInfo
-  /// @param info RouterInfo pointer to use in the message
-  explicit SessionConfirmedMessage(tini2p::data::Info* info)
-      : ri_block(info),
-        pad_block(crypto::RandInRange(
-            meta::ntcp2::session_confirmed::MinPaddingSize,
-            meta::ntcp2::session_confirmed::MaxPaddingSize))
-  {
-    serialize();
-  }
-
-  /// @brief Create a SessionConfirmedMessage from a RouterInfo (w/ padding)
-  /// @param info RouterInfo pointer to use in the message
-  /// @param pad_len Length of padding to include
-  SessionConfirmedMessage(tini2p::data::Info* info, const std::uint16_t pad_len)
-      : ri_block(info), pad_block(pad_len)
-  {
-    serialize();
-  }
-
-  /// @brief Get the total SessionConfirmed message size
-  std::uint16_t size() const
-  {
-    return meta::ntcp2::session_confirmed::PartOneSize + payload_size();
-  }
-
-  /// @brief Get the SessionConfirmed part two payload size
-  std::uint16_t payload_size() const
-  { 
-    const auto& opt_size = opt_block.data_size();
-    const auto& pad_size = pad_block.data_size();
-
-    return ri_block.size() + (opt_size ? opt_block.size() : opt_size)
-           + (pad_size ? pad_block.size() : pad_size) + crypto::hash::Poly1305Len;
-  }
-
-  /// @brief Serialize the message + payload to buffer
-  void serialize()
-  {
-    data.resize(size());
-    payload.resize(payload_size());
-
-    tini2p::BytesWriter<decltype(payload)> writer(payload);
-
-    // serialize and write RouterInfo block to payload buffer
-    ri_block.serialize();
-    writer.write_data(ri_block.buffer());
-
-    if (opt_block.data_size())
-      {  // serialize and write Options block to payload buffer
-        opt_block.serialize();
-        writer.write_data(opt_block.buffer());
-      }
-
-    if (pad_block.data_size())
-      {  // serialize and write Padding block to payload buffer
-        pad_block.serialize();
-        writer.write_data(pad_block.buffer());
-      }
-  }
-
-  /// @brief Deserialize the message + payload from buffer
-  void deserialize()
-  {
-    namespace block_m = tini2p::meta::block;
-
-    const exception::Exception ex{"SessionConfirmedMessage", __func__};
-
-    std::uint8_t block_count(0);
-    constexpr const std::uint8_t first(0), second(1), third(2), max(3);
-
-    tini2p::BytesReader<decltype(payload)> reader(payload);
-
-    // Read and deserialize a block from the buffer
-    const auto read_deserialize = [&reader, this](tini2p::data::Block& block) {
-      boost::endian::big_uint16_t block_size;
-      tini2p::read_bytes(
-          &payload[reader.count() + block_m::SizeOffset], block_size);
-
-      if (block_size)
-        {
-          block.buffer().resize(block_m::HeaderSize + block_size);
-          reader.read_data(block.buffer());
-          block.deserialize();
-        }
-      else
-        reader.skip_bytes(block_m::HeaderSize);
-    };
-
-    // Process RouterInfo, Options and Padding blocks
-    const auto process_blocks = [&block_count,
-                                 &reader,
-                                 this,
-                                 read_deserialize,
-                                 ex]() {
-      std::uint8_t block_type;
-      tini2p::read_bytes(&payload[reader.count()], block_type);
-
-      if (block_count == first && block_type != block_m::RouterInfoID)
-        ex.throw_ex<std::logic_error>("RouterInfo must be the first block.");
-
-      if (block_count == second && block_type != block_m::OptionsID
-          && block_type != block_m::PaddingID)
-        ex.throw_ex<std::logic_error>(
-            "second block must be Options or Padding block.");
-
-      if (block_count == third && block_type != block_m::PaddingID)
-        ex.throw_ex<std::logic_error>("last block must be Padding block.");
-
-      if (block_count == max)
-        ex.throw_ex<std::logic_error>("Padding must be the final block.");
-
-      if (block_type == block_m::RouterInfoID)
-        {
-          read_deserialize(ri_block);
-          ++block_count;
-        }
-      else if (block_type == block_m::OptionsID)
-        {
-          read_deserialize(opt_block);
-          ++block_count;
-        }
-      else if (block_type == block_m::PaddingID)
-        {
-          read_deserialize(pad_block);
-          block_count = max;
-        }
-    };
-
-    if (reader.gcount() <= crypto::hash::Poly1305Len) 
-      ex.throw_ex<std::logic_error>("payload must contain a RouterInfo block.");
-
-    while (reader.gcount() >= block_m::HeaderSize + crypto::hash::Poly1305Len)
-      process_blocks();
-
-    if (reader.gcount() > crypto::hash::Poly1305Len)
-      ex.throw_ex<std::length_error>("invalid trailing bytes.");
-  }
-};
-
 /// @brief Session created message handler
-template <class Role_t>
+template <class TRole>
 class SessionConfirmed
 {
-  Role_t role_;
-  NoiseHandshakeState* state_;
-  SessionCreatedConfirmedKDF kdf_;
-
  public:
+  using role_t = TRole;  //< Role trait alias
+  using state_t = noise::HandshakeState;  //< Handshake state trait alias
+  using request_msg_t = SessionRequestMessage;  //< SessionRequest message trait alias
+  using created_msg_t = SessionCreatedMessage;  //< SessionCreated message trait alias
+  using message_t = SessionConfirmedMessage;  //< SessionConfirmed message trait alias
+  using kdf_t = SessionCreatedKDF;  //< KDF trait alias
+
   /// @brief Initialize a session created message handler
   /// @param state Handshake state from successful session requested exchange
   /// @param message SessionCreated message with ciphertext + padding for KDF
-  SessionConfirmed(
-      NoiseHandshakeState* state,
-      const ntcp2::SessionCreatedMessage& message)
+  SessionConfirmed(state_t* state, const created_msg_t& message)
       : state_(state), kdf_(state)
   {
     if (!state)
       exception::Exception{"SessionConfirmed", __func__}
           .throw_ex<std::invalid_argument>("null handshake state.");
 
-    kdf_.derive_keys(message);
+    kdf_.Derive(message);
   }
 
   /// @brief Process the session created message based on role
   /// @param message Session created message to process
   /// @throw Runtime error if Noise library returns error
   void ProcessMessage(
-      SessionConfirmedMessage& message,
-      const SessionRequestOptions& options)
+      message_t& message,
+      const request_msg_t::options_t& options)
   {
-    if (role_.id() == noise::InitiatorRole)
+    if (std::is_same<role_t, Initiator>::value)
       Write(message, options);
     else
       Read(message, options);
   }
 
  private:
-  void Write(
-      SessionConfirmedMessage& message,
-      const SessionRequestOptions& options)
+  void Write(message_t& message, const request_msg_t::options_t& options)
   {
     const exception::Exception ex{"SessionConfirmed", __func__};
 
@@ -254,43 +98,44 @@ class SessionConfirmed
 
     auto& in = message.payload;
     auto& out = message.data;
-    const auto& in_size = in.size() - crypto::hash::Poly1305Len;
+    const auto& in_size = in.size() - message_t::mac_t::DigestLen;
 
     noise::RawBuffers bufs{in.data(), in_size, out.data(), out.size()};
     noise::setup_buffers(data, payload, bufs);
     noise::write_message(state_, &data, &payload, ex);
   }
 
-  void Read(
-      SessionConfirmedMessage& message,
-      const SessionRequestOptions& options)
+  void Read(message_t& message, const request_msg_t::options_t& options)
   {
-    namespace meta = tini2p::meta::ntcp2::session_confirmed;
-
     const exception::Exception ex{"SessionConfirmed", __func__};
 
     NoiseBuffer data /*input*/, payload /*output*/;
 
     message.payload.resize(
-        (std::uint16_t)options.m3p2_len - crypto::hash::Poly1305Len);
+        static_cast<std::uint16_t>(options.m3p2_len)
+        - message_t::mac_t::DigestLen);
 
     auto& in = message.data;
     auto& out = message.payload;
 
-    if (in.size() < meta::MinSize || in.size() > meta::MaxSize)
+    if (in.size() < message_t::MinSize || in.size() > message_t::MaxSize)
       ex.throw_ex<std::length_error>("invalid message size.");
 
     noise::RawBuffers bufs{in.data(), in.size(), out.data(), out.size()};
     noise::setup_buffers(payload, data, bufs);
     noise::read_message(state_, &data, &payload, ex);
 
-    if (options.m3p2_len != message.payload.size() + crypto::hash::Poly1305Len)
+    if (options.m3p2_len != message.payload.size() + message_t::mac_t::DigestLen)
       ex.throw_ex<std::logic_error>(
           "part two size must equal size sent in SessionRequest.");
 
     // deserialize message blocks from payload buffer
     message.deserialize();
   }
+
+  role_t role_;
+  state_t* state_;
+  kdf_t kdf_;
 };
 }  // namespace ntcp2
 }  // namespace tini2p

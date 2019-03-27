@@ -36,154 +36,55 @@
 #include "src/ntcp2/session/manager.h"
 
 namespace crypto = tini2p::crypto;
-namespace meta = tini2p::meta::ntcp2::session;
 
-using namespace tini2p::ntcp2;
+using Info = tini2p::data::Info;
+using SessionManager = tini2p::ntcp2::SessionManager;
+using init_session_t = SessionManager::out_session_t;
+using resp_session_t = SessionManager::listener_t::session_t;
 
 struct SessionFixture
 {
   SessionFixture()
-      : host(
-            boost::asio::ip::tcp::v4(),
-            crypto::RandInRange<std::uint16_t>(9111, 10135)),
-        host_v6(
-            boost::asio::ip::tcp::v6(),
-            crypto::RandInRange<std::uint16_t>(9111, 10135)),
-        dest(new tini2p::data::Info(
-            std::make_unique<tini2p::data::Identity>(),
-            std::vector<tini2p::data::Address>{
-                tini2p::data::Address(host.address().to_string(), host.port()),
-                tini2p::data::Address(
+      : host(resp_session_t::tcp_t::v4(), crypto::RandInRange(9111, 10135)),
+        host_v6(resp_session_t::tcp_t::v6(), crypto::RandInRange(9111, 10135)),
+        dest(new Info(
+            Info::identity_t(),
+            Info::addresses_t{
+                Info::address_t(host.address().to_string(), host.port()),
+                Info::address_t(
                     host_v6.address().to_string(),
                     host_v6.port())})),
-        info(new tini2p::data::Info()),
-        manager(dest.get(), host, host_v6),
-        init(dest.get(), info.get())
+        info(new Info()),
+        manager(dest, host, host_v6)
   {
-    using BlockPtr = std::unique_ptr<tini2p::data::Block>;
-
-    msg.blocks.emplace_back(BlockPtr(new tini2p::data::PaddingBlock(3)));
-
-    // give session listeners time to start before sending requests
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    msg.add_block(tini2p::data::PaddingBlock(32));
   }
 
   ~SessionFixture()
   {
-    REQUIRE_NOTHROW(init.Stop());
     REQUIRE_NOTHROW(manager.Stop());
-
-    // wait while all sessions + listeners shut down
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
   }
 
-  /// @brief Initialize a mock IPv4 NTCP2 session
-  decltype(auto) InitializeSession()
-  {
-    REQUIRE_NOTHROW(init.Start(false /*prefer_v6*/));
-    REQUIRE_NOTHROW(init.Wait());
-    REQUIRE(init.ready());
-
-    Session<SessionResponder>* remote;
-    REQUIRE_NOTHROW(
-        remote =
-            manager.listener(meta::IP_t::v4)->session(info->noise_keys().pk));
-
-    REQUIRE(remote);
-    REQUIRE_NOTHROW(remote->Wait());
-    REQUIRE(remote->ready());
-
-    return remote;
-  }
-
-  /// @brief Initialize a mock IPv6 NTCP2 session
-  decltype(auto) InitializeSessionV6()
-  {
-    REQUIRE_NOTHROW(init.Start());
-    REQUIRE_NOTHROW(init.Wait());
-    REQUIRE(init.ready());
-
-    Session<SessionResponder>* remote;
-    REQUIRE_NOTHROW(
-        remote =
-            manager.listener(meta::IP_t::v6)->session(info->noise_keys().pk));
-
-    REQUIRE(remote);
-    REQUIRE_NOTHROW(remote->Wait());
-    REQUIRE(remote->ready());
-
-    return remote;
-  }
-
-  boost::asio::ip::tcp::endpoint host, host_v6;
-  std::unique_ptr<tini2p::data::Info> dest, info;
-  Session<SessionInitiator> init;
+  resp_session_t::tcp_t::endpoint host, host_v6;
+  Info::shared_ptr dest, info;
   SessionManager manager;
-  DataPhaseMessage msg;
+  resp_session_t::data_msg_t msg;
 };
-
-TEST_CASE_METHOD(
-    SessionFixture,
-    "IPv4 Session creates a connection to a destination",
-    "[session]")
-{
-  REQUIRE(InitializeSession());
-}
-
-TEST_CASE_METHOD(
-    SessionFixture,
-    "IPv6 Session creates a connection to a destination",
-    "[session]")
-{
-  REQUIRE(InitializeSessionV6());
-}
-
-TEST_CASE_METHOD(
-    SessionFixture,
-    "IPv4 Session writes and reads after successful connection",
-    "[session]")
-{
-  auto remote = InitializeSession();
-
-  REQUIRE(remote);
-
-  REQUIRE_NOTHROW(init.Write(msg));
-  REQUIRE_NOTHROW(remote->Read(msg));
-
-  REQUIRE_NOTHROW(remote->Write(msg));
-  REQUIRE_NOTHROW(init.Read(msg));
-}
-
-TEST_CASE_METHOD(
-    SessionFixture,
-    "IPv6 Session writes and reads after successful connection",
-    "[session]")
-{
-  auto remote_v6 = InitializeSessionV6();
-
-  REQUIRE(remote_v6);
-
-  REQUIRE_NOTHROW(init.Write(msg));
-  REQUIRE_NOTHROW(remote_v6->Read(msg));
-
-  REQUIRE_NOTHROW(remote_v6->Write(msg));
-  REQUIRE_NOTHROW(init.Read(msg));
-}
 
 TEST_CASE_METHOD(
     SessionFixture,
     "Manager Session writes and reads after successful connection",
     "[session]")
 {
-  auto* mgr_init = manager.session(dest.get());
+  auto mgr_init = manager.session(dest);
 
   REQUIRE(mgr_init);
-  REQUIRE_NOTHROW(mgr_init->Start());
+  REQUIRE_NOTHROW(mgr_init->Start(init_session_t::meta_t::IP::v6));
   REQUIRE_NOTHROW(mgr_init->Wait());
   REQUIRE(mgr_init->ready());
 
-  auto* remote_v6 =
-      manager.listener(meta::IP_t::v6)->session(dest->noise_keys().pk);
+  auto remote_v6 = manager.listener(init_session_t::meta_t::IP::v6)
+                       ->session(mgr_init->key());
 
   REQUIRE(remote_v6);
   REQUIRE_NOTHROW(remote_v6->Wait());
@@ -200,12 +101,10 @@ TEST_CASE_METHOD(
 
 TEST_CASE_METHOD(
     SessionFixture,
-    "SessionManager rejects multiple sessions to same destination",
+    "SessionManager rejects null RouterInfo for outbound sessions",
     "[session]")
 {
-  REQUIRE_NOTHROW(manager.session(dest.get()));
-
-  REQUIRE_THROWS(manager.session(dest.get()));
+  REQUIRE_THROWS(manager.session(nullptr));
 }
 
 TEST_CASE_METHOD(
@@ -213,14 +112,15 @@ TEST_CASE_METHOD(
     "Session rejects reading/writing data phase messages w/o valid handshake",
     "[session]")
 {
+
+  init_session_t init(dest, info);
   REQUIRE(!init.ready());
   REQUIRE_THROWS(init.Write(msg));
   REQUIRE_THROWS(init.Read(msg));
 
-  boost::asio::io_context ctx;
-  Session<SessionResponder> resp(
-      dest.get(),
-      boost::asio::ip::tcp::socket(ctx, boost::asio::ip::tcp::v6()));
+  resp_session_t::context_t ctx;
+  resp_session_t resp(
+      dest, resp_session_t::tcp_t::socket(ctx, resp_session_t::tcp_t::v6()));
 
   REQUIRE(!resp.ready());
   REQUIRE_THROWS(resp.Write(msg));
@@ -229,27 +129,17 @@ TEST_CASE_METHOD(
 
 TEST_CASE_METHOD(
     SessionFixture,
-    "SessionManager rejects null RouterInfo for outbound sessions",
+    "SessionManager rejects new connection for already existing session",
     "[session]")
 {
-  REQUIRE_THROWS(manager.session(nullptr));
-}
+  auto s0 = manager.session(dest);
 
-// TODO(tini2p): fix manager + session sockets to be able to restart.
-//   Use executor_work_guard to keep io_context::run from returning
-//TEST_CASE_METHOD(
-//    SessionFixture,
-//    "SessionManager rejects new connection for already existing session",
-//    "[session]")
-//{
-//  decltype(init) s0(dest.get(), info.get());
-//  REQUIRE_NOTHROW(s0.Start());
-//
-//  decltype(init) s1(dest.get(), info.get());
-//  REQUIRE_NOTHROW(s1.Start());
-//  REQUIRE_NOTHROW(s1.Stop());
-//
-//  std::this_thread::sleep_for(std::chrono::milliseconds(100));
-//
-//  REQUIRE(manager.blacklisted(s0.connect_key()));
-//}
+  REQUIRE(s0);
+  REQUIRE_NOTHROW(s0->Start(init_session_t::meta_t::IP::v6));
+
+  REQUIRE_THROWS(manager.session(dest));
+  REQUIRE_NOTHROW(
+      init_session_t(dest, info).Start(init_session_t::meta_t::IP::v6));
+
+  REQUIRE(manager.blacklisted(s0->key()));
+}

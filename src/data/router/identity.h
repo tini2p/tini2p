@@ -30,296 +30,241 @@
 #ifndef SRC_DATA_ROUTER_IDENTITY_H_
 #define SRC_DATA_ROUTER_IDENTITY_H_
 
-#include "src/crypto/meta.h"
-#include "src/crypto/rand.h"
-#include "src/crypto/elgamal.h"
-#include "src/crypto/sign.h"
+#include "src/crypto/aes.h"
+#include "src/crypto/crypto.h"
+#include "src/crypto/keys.h"
+#include "src/crypto/signing.h"
 
 #include "src/data/router/meta.h"
 #include "src/data/router/certificate.h"
-
-namespace crypto = tini2p::crypto;
-namespace exception = tini2p::exception;
 
 namespace tini2p
 {
 namespace data
 {
-/// @brief Idenity hash alias for correctness, usability
-/// @detail Wiping identity hashes from memory removes traces of contacted routers
-using IdentHash = CryptoPP::FixedSizeSecBlock<std::uint8_t, crypto::hash::Sha256Len>;
-
-/// @brief Convenience class for processing RouterIdentity crypto
-class Crypto
-{
-  crypto::elgamal::Encryptor enc_;
-  std::unique_ptr<crypto::elgamal::Decryptor> dec_;
-
- public:
-  explicit Crypto(const crypto::elgamal::Keypair& keys)
-      : enc_(keys.pk), dec_(new crypto::elgamal::Decryptor(keys.sk))
-  {
-  }
-
-  explicit Crypto(const crypto::elgamal::PubKey& key) : enc_(key) {}
-
-  /// @brief Convenience function to encrypt message using ElGamal
-  /// @param ciphertext Output buffer for ciphertext
-  /// @param plaintext Input buffer for plaintext
-  /// @param zero_pad Flag for zero-padded ciphertext
-  void Encrypt(
-      crypto::elgamal::Ciphertext& ciphertext,
-      const crypto::elgamal::Plaintext& plaintext,
-      const bool zero_pad)
-  {
-    enc_.Encrypt(ciphertext, plaintext, zero_pad);
-  }
-
-  /// @brief Convenience function to decrypt message using ElGamal
-  /// @param plaintext Output buffer for plaintext
-  /// @param ciphertext Input buffer for ciphertext
-  /// @param zero_pad Flag for zero-padded ciphertext
-  void Decrypt(
-      crypto::elgamal::Plaintext& plaintext,
-      const crypto::elgamal::Ciphertext& ciphertext,
-      const bool zero_pad)
-  {
-    if (!dec_)
-      exception::Exception{"Identity: Crypto", __func__}
-          .throw_ex<std::logic_error>("null decryptor.");
-
-    dec_->Decrypt(plaintext, ciphertext, zero_pad);
-  }
-
-  /// @brief Get the public key
-  decltype(auto) pub_key() const noexcept
-  {
-    return enc_.pub_key();
-  }
-
-  /// @brief Rekey the encryption public key
-  /// @param key ElGamal public key
-  void rekey(const crypto::elgamal::PubKey& key)
-  {
-    enc_.rekey(key);
-  }
-
-  /// @brief Rekey the crypto keypair
-  /// @param keys ElGamal keypair
-  void rekey(const crypto::elgamal::Keypair& keys)
-  {
-    enc_.rekey(keys.pk);
-
-    if (!dec_)
-      dec_ = std::make_unique<crypto::elgamal::Decryptor>(keys.sk);
-    else
-      dec_->rekey(keys.sk);
-  }
-};
-
-/// @brief Convenience class for processing RouterIdentity signatures
-class Signing
-{
-  std::unique_ptr<crypto::ed25519::Signer> signer_;
-  crypto::ed25519::Verifier verifier_;
-
- public:
-  explicit Signing(const crypto::ed25519::Keypair& keys)
-      : signer_(new crypto::ed25519::Signer(keys)), verifier_(keys.pk)
-  {
-  }
-
-  explicit Signing(const crypto::ed25519::PubKey& pk) : verifier_(pk)
-  {
-  }
-
-  /// @brief Convenience function to Ed25519 sign a message
-  template <class MessageIt>
-  void Sign(
-      const MessageIt data,
-      const std::size_t size,
-      crypto::ed25519::Signature& sig) const
-  {
-    if (!signer_)
-      exception::Exception{"Router: Signing", __func__}
-          .throw_ex<std::logic_error>("null signer.");
-
-    signer_->Sign(data, size, sig.data());
-  }
-
-  /// @brief Convenience function to verify an Ed25519 signed message
-  template <class MessageIt>
-  bool Verify(
-      const MessageIt data,
-      const std::size_t size,
-      const crypto::ed25519::Signature& sig) const
-  {
-    return verifier_.Verify(data, size, sig.data());
-  }
-
-  /// @brief Rekey the verifier public key
-  void rekey(const crypto::ed25519::PubKey& key)
-  {
-    if (signer_)
-      exception::Exception{"Router: Signing", __func__}
-          .throw_ex<std::logic_error>(
-              "private key present. Create a new object, or rekey with "
-              "a keypair.");
-
-    verifier_.rekey(key);
-  }
-
-  /// @brief Rekey the signing keypair
-  void rekey(const crypto::ed25519::Keypair& keys)
-  {
-    if (!signer_)
-      signer_ = std::make_unique<crypto::ed25519::Signer>(keys.sk);
-    else
-      signer_->rekey(keys.sk);
-
-    verifier_.rekey(keys.pk);
-  }
-
-  /// @brief Get the public key
-  decltype(auto) pub_key() const noexcept
-  {
-    return verifier_.pub_key();
-  }
-
-  /// @brief Get the signature length
-  decltype(auto) sig_len() const noexcept
-  {
-    return verifier_.sig_len();
-  }
-};
-
 /// @brief Class for I2P RouterIdentity
 class Identity
 {
-  std::array<std::uint8_t, meta::router::identity::PaddingSize> padding_;
-  Certificate cert_;
-  std::unique_ptr<Crypto> crypto_;
-  std::unique_ptr<Signing> signing_;
-  IdentHash hash_;
-  std::vector<std::uint8_t> buf_;
-
  public:
-  Identity() : buf_(meta::router::identity::DefaultSize)
+  using cert_t = Certificate;  //< Certificate trait alias
+  using hash_t = crypto::Sha256::digest_t;  //< Hash trait alias
+  using padding_t = crypto::SecBytes;  //< Padding trait alias
+  using buffer_t = crypto::SecBytes;  //< Buffer trait alias
+
+  using ecies_x25519_hmac_t = crypto::EciesX25519<crypto::HmacSha256>;  //< ECIES-X25519-Ratchet-HMAC-SHA256 trait alias
+  using ecies_x25519_blake_t = crypto::EciesX25519<crypto::Blake2b>;  //< ECIES-X25519-Ratchet-Blake2b trait alias
+  using crypto_v = boost::variant<ecies_x25519_hmac_t, ecies_x25519_blake_t>;  //< Crypto implementation trait alias
+
+  using eddsa_t = crypto::EdDSASha512;  //< EdDSA-SHA512 trait alias
+  using reddsa_t = crypto::RedDSASha512;  //< RedDSA-SHA512 trait alias
+  using xeddsa_t = crypto::XEdDSASha512;  //< XEdDSA-SHA512 trait alias
+  using signing_v = boost::variant<eddsa_t, reddsa_t, xeddsa_t>;  //< Signing variant trait alias
+
+  /// @alias signature_v
+  /// @brief Signature variant trait alias
+  using signature_v = boost::variant<
+      eddsa_t::signature_t,
+      reddsa_t::signature_t,
+      xeddsa_t::signature_t>;
+
+  enum Sizes : std::uint16_t
   {
-    crypto::RandBytes(padding_.data(), padding_.size());
+    KeysPaddingLen = 384,  //< Size of keys + padding, see spec
+    MinSize = KeysPaddingLen + cert_t::NullCertSize,
+    DefaultSize = KeysPaddingLen + cert_t::KeyCertSize,  // Ed25519 key cert
+    MaxSize = DefaultSize,
+  };
 
-    create_keys();
+  enum Offsets : std::uint16_t
+  {
+    CertOffset = KeysPaddingLen,
+    CertSizeOffset = CertOffset + cert_t::CertTypeSize,
+  };
 
+  Identity() : buf_(DefaultSize), cert_()
+  {
+    rekey<ecies_x25519_hmac_t, eddsa_t>(
+        ecies_x25519_hmac_t::create_keys(), eddsa_t::create_keys());
+
+    serialize();
+  }
+
+  /// @brief Create an Identity with given crypto + signing implementations
+  /// @tparam TCrypto Crypto implementation type
+  /// @tparam TSigning Signing implementation type
+  /// @param t_crypto Crytpo implementation
+  /// @param signing Signing implementation
+  template <
+      class TCrypto,
+      class TSigning,
+      typename = std::enable_if_t<
+          (std::is_same<TCrypto, ecies_x25519_hmac_t>::value
+           || std::is_same<TCrypto, ecies_x25519_blake_t>::value)
+          && (std::is_same<TSigning, eddsa_t>::value
+              || std::is_same<TSigning, reddsa_t>::value
+              || std::is_same<TSigning, xeddsa_t>::value)>>
+  Identity(TCrypto t_crypto, TSigning signing)
+      : buf_(DefaultSize),
+        cert_(typeid(TSigning), typeid(TCrypto)),
+        crypto_(std::forward<TCrypto>(t_crypto)),
+        signing_(std::forward<TSigning>(signing))
+  {
     serialize();
   }
 
   /// @brief Converting ctor for deserializing from a buffer
   /// @param buffer Buffer containing raw router identity
-  template <class BegIt, class EndIt>
-  explicit Identity(BegIt begin, EndIt end) : buf_(begin, end)
+  explicit Identity(buffer_t buf)
+      : buf_(std::forward<buffer_t>(buf)),
+        cert_(),
+        padding_(),
+        crypto_(),
+        signing_()
   {
-    namespace meta = tini2p::meta::router::identity;
+    const exception::Exception ex{"RouterIdentity", __func__};
 
-    if (end - begin < meta::DefaultSize)
-      exception::Exception{"RouterIdentity", __func__}
-          .throw_ex<std::length_error>("invalid identity size.");
+    if (buf_.size() < MinSize || buf_.size() > MaxSize)
+      ex.throw_ex<std::length_error>("invalid identity size.");
 
     deserialize();
   }
 
-  /// @brief Converting-ctor (copy) for serializing from a crypto + signing key
-  /// @param ck Encryption public key
-  /// @param sk Signing public key
-  Identity(const crypto::elgamal::PubKey& ck, const crypto::ed25519::PubKey& sk)
-      : buf_(meta::router::identity::DefaultSize),
-        crypto_(new Crypto(ck)),
-        signing_(new Signing(sk))
+  /// @brief Converting ctor for deserializing from a buffer
+  /// @param buffer Buffer containing raw router identity
+  explicit Identity(
+      buffer_t::const_iterator begin,
+      buffer_t::const_iterator end)
+      : buf_(begin, end), cert_(), padding_(), crypto_(), signing_()
   {
-    crypto::RandBytes(padding_.data(), padding_.size());
+    const exception::Exception ex{"RouterIdentity", __func__};
 
-    serialize();
+    const auto size = end - begin;
+    if (size < MinSize || size > MaxSize)
+      ex.throw_ex<std::length_error>("invalid identity size.");
+
+    deserialize();
   }
 
-  /// @brief Converting-ctor (copy) for serializing from a crypto + signing keypairs
-  /// @param crypto_keys Encryption keypair
-  /// @param sign_keys Signing keypair
-  Identity(
-      const crypto::elgamal::Keypair& crypto_keys,
-      const crypto::ed25519::Keypair& sign_keys)
-      : buf_(meta::router::identity::DefaultSize),
-        crypto_(new Crypto(crypto_keys)),
-        signing_(new Signing(sign_keys))
+  /// @brief Converting ctor for deserializing from a buffer
+  /// @param buffer Buffer containing raw router identity
+  explicit Identity(
+      buffer_t::const_pointer data,
+      const buffer_t::size_type size)
+      : buf_(data, size), cert_(), padding_(), crypto_(), signing_()
   {
-    crypto::RandBytes(padding_.data(), padding_.size());
+    const exception::Exception ex{"RouterIdentity", __func__};
 
-    serialize();
+    if (size < MinSize || size > MaxSize)
+      ex.throw_ex<std::length_error>("invalid identity size.");
+
+    deserialize();
   }
 
-  /// @brief Get a const reference to the buffer
-  const decltype(buf_)& buffer() const noexcept
+
+  /// @brief Sign a message
+  /// @param msg_ptr Const pointer to the beginning of the message
+  /// @param msg_len Length of the message
+  /// @return Signature variant containing the message signature
+  decltype(auto) Sign(const std::uint8_t* msg_ptr, const std::size_t msg_len)
+      const
   {
-    return buf_;
+    return boost::apply_visitor(
+        [msg_ptr, msg_len](const auto& val) {
+          typename std::decay_t<decltype(val)>::signature_t sig;
+          val.Sign(msg_ptr, msg_len, sig);
+          return signature_v(std::move(sig));
+        },
+        signing_);
   }
 
-  /// @brief Get a non-const reference to the buffer
-  decltype(buf_)& buffer() noexcept
+  /// @brief Verify a signed a message
+  /// @detail Signature variant must match the Identity's signing variant type
+  /// @param msg_ptr Const pointer to the beginning of the message
+  /// @param msg_len Length of the message
+  /// @param sig Signature variant containing the message signature
+  /// @return True if the signature is valid
+  /// @throw Logic error on signature type mismatch
+  bool Verify(
+      const std::uint8_t* msg_ptr,
+      const std::size_t msg_len,
+      const signature_v& sig) const
   {
-    return buf_;
+    return boost::apply_visitor(
+        [msg_ptr, msg_len, sig](const auto& s) {
+          using sig_t = typename std::decay_t<decltype(s)>::signature_t;
+
+          const exception::Exception ex{"Identity", __func__};
+
+          if (sig.type() != typeid(sig_t))
+            ex.throw_ex<std::logic_error>("invalid signature type.");
+
+          return s.Verify(msg_ptr, msg_len, boost::get<sig_t>(sig));
+        },
+        signing_);
   }
 
-  /// @brief Get a const reference to the crypto class
-  decltype(auto) crypto() const noexcept
+  /// @brief Encrypt a message
+  /// @tparam TCrypto Crypto implementation type
+  /// @param message Message buffer
+  /// @param ciphertext Ciphertext buffer
+  template <
+      class TCrypto,
+      typename = std::enable_if_t<
+          std::is_same<TCrypto, ecies_x25519_hmac_t>::value
+          || std::is_same<TCrypto, ecies_x25519_blake_t>::value>>
+  void Encrypt(
+      const typename TCrypto::message_t& message,
+      typename TCrypto::ciphertext_t& ciphertext)
   {
-    return crypto_.get();
+    const exception::Exception ex{"Identity", __func__};
+
+    if (crypto_.type() != typeid(TCrypto))
+      ex.throw_ex<std::invalid_argument>("invalid crypto type.");
+
+    boost::apply_visitor(
+        [&ciphertext, message](auto& c) { c.Encrypt(message, ciphertext); },
+        crypto_);
   }
 
-  /// @brief Get a const pointer to the signing class
-  decltype(auto) signing() const noexcept
+  /// @brief Decrypt a message
+  /// @tparam TCrypto Crypto implementation type
+  /// @param message Message buffer
+  /// @param ciphertext Ciphertext buffer
+  template <
+      class TCrypto,
+      typename = std::enable_if_t<
+          std::is_same<TCrypto, ecies_x25519_hmac_t>::value
+          || std::is_same<TCrypto, ecies_x25519_blake_t>::value>>
+  void Decrypt(
+      typename TCrypto::message_t& message,
+      const typename TCrypto::ciphertext_t& ciphertext)
   {
-    return signing_.get();
-  }
+    const exception::Exception ex{"Identity", __func__};
 
-  /// @brief Get a const reference to the certificate
-  const decltype(cert_)& cert() const noexcept
-  {
-    return cert_;
-  }
+    if (crypto_.type() != typeid(TCrypto))
+      ex.throw_ex<std::invalid_argument>("invalid crypto type.");
 
-  /// @brief Get the total size of the router identity
-  std::size_t size() const noexcept
-  {
-    return crypto_->pub_key().size() + padding_.size()
-           + signing_->pub_key().size() + cert_.length;
-  }
-
-  /// @brief Get the padding size
-  std::uint8_t padding_len() const noexcept
-  {
-    return padding_.size();
-  }
-
-  /// @brief Get a const reference to the Identity hash
-  const decltype(hash_)& hash() const noexcept
-  {
-    return hash_;
-  }
-
-  /// @brief Calculate a new Identity hash from the current buffer
-  void update_hash()
-  {
-    CryptoPP::SHA256().CalculateDigest(hash_.data(), buf_.data(), buf_.size());
+    boost::apply_visitor(
+        [&message, ciphertext](auto& c) { c.Decrypt(message, ciphertext); },
+        crypto_);
   }
 
   /// @brief Serialize the router identity to buffer
   void serialize()
   {
-    namespace meta = tini2p::meta::router::identity;
+    resize_padding();
+    crypto::RandBytes(padding_);
 
-    tini2p::BytesWriter<decltype(buf_)> writer(buf_);
+    buf_.resize(size());
+    BytesWriter<buffer_t> writer(buf_);
 
-    writer.write_data(crypto_->pub_key());
+    const auto write_pubkey = [&writer](const auto& t) {
+      writer.write_data(t.pubkey());
+    };
+
+    boost::apply_visitor(write_pubkey, crypto_);
     writer.write_data(padding_);
-    writer.write_data(signing_->pub_key());
+    boost::apply_visitor(write_pubkey, signing_);
 
     cert_.serialize();
     writer.write_data(cert_.buffer);
@@ -330,40 +275,315 @@ class Identity
   /// @brief Deserialize the router identity from buffer
   void deserialize()
   {
-    namespace meta = tini2p::meta::router::identity;
+    tini2p::BytesReader<buffer_t> reader(buf_);
+    reader.skip_bytes(CertOffset);
+    reader.read_data(cert_.buffer);
+    cert_.deserialize();
 
-    std::uint16_t size = 0;
-    {
-      tini2p::BytesReader<decltype(buf_)> reader(buf_);
+    if (cert_.locally_unreachable())
+      {
+        std::cerr
+            << "Router: Identity: unreachable because of unsupported crypto.";
+        return;
+      }
+    reader.skip_back(CertOffset + cert_.buffer.size());
 
-      crypto::elgamal::PubKey crypto_key;
-      reader.read_data(crypto_key);
+    type_to_variant();
+    resize_padding();
 
-      reader.read_bytes(padding_);
+    boost::apply_visitor(
+        [&reader](auto& c) { reader.read_data(c.pubkey()); }, crypto_);
 
-      crypto::ed25519::PubKey sign_key;
-      reader.read_data(sign_key);
+    reader.read_data(padding_);
 
-      reader.read_data(cert_.buffer);
+    boost::apply_visitor(
+        [&reader](auto& s) {
+          typename std::decay_t<decltype(s)>::pubkey_t key;
+          reader.read_data(key);
+          s.rekey(std::move(key));
+        },
+        signing_);
 
-      crypto_ = std::make_unique<Crypto>(crypto_key);
-      signing_ = std::make_unique<Signing>(sign_key);
-
-      cert_.deserialize();
-
-      size = reader.count();
-    }
+    buf_.resize(cert_.buffer.size() + reader.count());
     update_hash();
+  }
 
-    buf_.resize(size);
+  /// @brief Create a fully initialized Identity
+  /// @param crypto_keys Local crypto identity keypair
+  /// @param r_id_key Remote crypto identity public key
+  /// @param r_ep_key Remote crypto ephemeral public key
+  /// @param sign_keys Local signing keypair
+  template <
+      class TCrypto,
+      class TSigning,
+      typename = std::enable_if_t<
+          (std::is_same<TCrypto, ecies_x25519_hmac_t>::value
+           || std::is_same<TCrypto, ecies_x25519_blake_t>::value)
+          && (std::is_same<TSigning, eddsa_t>::value
+              || std::is_same<TSigning, reddsa_t>::value
+              || std::is_same<TSigning, xeddsa_t>::value)>>
+  void rekey(
+      typename TCrypto::keypair_t l_id_keys,
+      typename TCrypto::pubkey_t r_id_key,
+      typename TCrypto::pubkey_t r_ep_key,
+      typename TSigning::keypair_t sign_keys)
+  {
+    using crypto_keys_t = typename TCrypto::keypair_t;
+    using crypto_pubkey_t = typename TCrypto::pubkey_t;
+    using sign_keys_t = typename TSigning::keypair_t;
+
+    if (crypto_.type() != typeid(TCrypto))
+      crypto_ = std::move(TCrypto(
+          std::forward<crypto_keys_t>(l_id_keys),
+          std::forward<crypto_keys_t>(r_id_key),
+          std::forward<crypto_pubkey_t>(r_ep_key)));
+    else
+      boost::get<TCrypto>(crypto_).rekey(
+          std::forward<crypto_keys_t>(l_id_keys),
+          std::forward<crypto_keys_t>(r_id_key),
+          std::forward<crypto_pubkey_t>(r_ep_key));
+
+    if (signing_.type() != typeid(TSigning))
+      signing_ = std::move(TSigning(std::forward<sign_keys_t>(sign_keys)));
+    else
+      boost::get<TSigning>(signing_).rekey(std::forward<sign_keys_t>(sign_keys));
+
+    serialize();
+  }
+
+  /// @brief Rekey local crypto and signing keypairs
+  /// @param crypto_keys Local crypto identity keypair
+  /// @param sign_keys Local signing keypair
+  template <
+      class TCrypto,
+      class TSigning,
+      typename = std::enable_if_t<
+          (std::is_same<TCrypto, ecies_x25519_hmac_t>::value
+           || std::is_same<TCrypto, ecies_x25519_blake_t>::value)
+          && (std::is_same<TSigning, eddsa_t>::value
+              || std::is_same<TSigning, reddsa_t>::value
+              || std::is_same<TSigning, xeddsa_t>::value)>>
+  void rekey(
+      typename TCrypto::keypair_t crypto_keys,
+      typename TSigning::keypair_t sign_keys)
+  {
+    using crypto_keys_t = typename TCrypto::keypair_t;
+    using sign_keys_t = typename TSigning::keypair_t;
+
+    if (crypto_.type() != typeid(TCrypto))
+      crypto_ = std::move(TCrypto(std::forward<crypto_keys_t>(crypto_keys)));
+    else
+      boost::get<TCrypto>(crypto_).rekey(
+          std::forward<crypto_keys_t>(crypto_keys));
+
+    if (signing_.type() != typeid(TSigning))
+      signing_ = std::move(TSigning(std::forward<sign_keys_t>(sign_keys)));
+    else
+      boost::get<TSigning>(signing_).rekey(
+          std::forward<sign_keys_t>(sign_keys));
+
+    serialize();
+  }
+
+  /// @brief Rekey the crypto + signing public keys
+  /// @detail Useful for initializing a verifying Identity
+  /// @param r_id_key Remote crypto identity public key
+  /// @param r_ep_key Remote crypto ephemeral public key
+  /// @param sk Remote signing public key
+  template <
+      class TCrypto,
+      class TSigning,
+      typename = std::enable_if_t<
+          (std::is_same<TCrypto, ecies_x25519_hmac_t>::value
+           || std::is_same<TCrypto, ecies_x25519_blake_t>::value)
+          && (std::is_same<TSigning, eddsa_t>::value
+              || std::is_same<TSigning, reddsa_t>::value
+              || std::is_same<TSigning, xeddsa_t>::value)>>
+  void rekey(
+      typename TCrypto::pubkey_t r_id_key,
+      typename TCrypto::pubkey_t r_ep_key,
+      typename TSigning::pubkey_t sk)
+  {
+    using crypto_key_t = typename TCrypto::pubkey_t;
+    using sign_key_t = typename TSigning::pubkey_t;
+
+    rekey<TCrypto>(
+        std::forward<crypto_key_t>(r_id_key),
+        std::forward<crypto_key_t>(r_ep_key));
+
+    rekey<TSigning>(std::forward<sign_key_t>(sk));
+  }
+
+  template <
+      class TCrypto,
+      typename = std::enable_if_t<
+          std::is_same<TCrypto, ecies_x25519_hmac_t>::value
+          || std::is_same<TCrypto, ecies_x25519_blake_t>::value>>
+  void rekey(
+      typename TCrypto::pubkey_t r_id_key,
+      typename TCrypto::pubkey_t r_ep_key)
+  {
+    using pubkey_t = typename TCrypto::pubkey_t;
+
+    if (crypto_.type() != typeid(TCrypto))
+      crypto_ = TCrypto(
+          std::forward<pubkey_t>(r_id_key), std::forward<pubkey_t>(r_ep_key));
+    else
+      boost::get<TCrypto>(crypto_).rekey(
+          std::forward<pubkey_t>(r_id_key), std::forward<pubkey_t>(r_ep_key));
+  }
+
+  template <
+      class TSigning,
+      typename = std::enable_if_t<
+          std::is_same<TSigning, eddsa_t>::value
+          || std::is_same<TSigning, reddsa_t>::value
+          || std::is_same<TSigning, xeddsa_t>::value>>
+  void rekey(typename TSigning::pubkey_t sk)
+  {
+    using pubkey_t = typename TSigning::pubkey_t;
+
+    if (signing_.type() != typeid(TSigning))
+      signing_ = TSigning(std::forward<pubkey_t>(sk));
+    else
+      boost::get<TSigning>(signing_).rekey(std::forward<pubkey_t>(sk));
+  }
+
+  /// @brief Get a const reference to the buffer
+  const buffer_t& buffer() const noexcept
+  {
+    return buf_;
+  }
+
+  /// @brief Get a non-const reference to the buffer
+  buffer_t& buffer() noexcept
+  {
+    return buf_;
+  }
+
+  /// @brief Get a const reference to the crypto class
+  const crypto_v& crypto() const noexcept
+  {
+    return crypto_;
+  }
+
+  /// @brief Get a non-const reference to the crypto class
+  crypto_v& crypto() noexcept
+  {
+    return crypto_;
+  }
+
+  decltype(auto) crypto_pubkey_len() const
+  {
+    return boost::apply_visitor(
+        [](const auto& s) -> std::uint16_t {
+          return std::decay_t<decltype(s)>::PublicKeyLen;
+        },
+        crypto_);
+  }
+
+  /// @brief Get a const reference to the signing class
+  const signing_v& signing() const noexcept
+  {
+    return signing_;
+  }
+
+  /// @brief Get a non-const reference to the signing class
+  signing_v& signing() noexcept
+  {
+    return signing_;
+  }
+
+  decltype(auto) signing_pubkey_len() const
+  {
+    return boost::apply_visitor(
+        [](const auto& s) -> std::uint16_t {
+          return std::decay_t<decltype(s)>::PublicKeyLen;
+        },
+        signing_);
+  }
+
+  decltype(auto) sig_len() const
+  {
+    return boost::apply_visitor(
+        [](const auto& s) -> std::uint16_t {
+          return std::decay_t<decltype(s)>::SignatureLen;
+        },
+        signing_);
+  }
+
+  const padding_t& padding() const noexcept
+  {
+    return padding_;
+  }
+
+  /// @brief Get a const reference to the certificate
+  const cert_t& cert() const noexcept
+  {
+    return cert_;
+  }
+
+  /// @brief Get the total size of the router identity
+  std::size_t size() const noexcept
+  {
+    return crypto_pubkey_len() + padding_.size() + signing_pubkey_len()
+           + cert_.length;
+  }
+
+  /// @brief Get the padding size
+  std::uint16_t padding_len() const noexcept
+  {
+    return padding_.size();
+  }
+
+  /// @brief Get a const reference to the Identity hash
+  const hash_t& hash() const noexcept
+  {
+    return hash_;
+  }
+
+  /// @brief Calculate a new Identity hash from the current buffer
+  void update_hash()
+  {
+    crypto::Sha256::Hash(hash_, buf_);
   }
 
  private:
-  void create_keys()
-  {  // create the crypto and signing keys
-    crypto_ = std::make_unique<Crypto>(crypto::elgamal::create_keys());
-    signing_ = std::make_unique<Signing>(crypto::ed25519::create_keys());
+  void resize_padding()
+  {
+    padding_.resize(
+        KeysPaddingLen - (crypto_pubkey_len() + signing_pubkey_len()));
   }
+
+  void type_to_variant()
+  {
+    if (cert_.crypto_type == cert_t::crypto_type_t::EciesX25519
+        && crypto_.type() != typeid(ecies_x25519_hmac_t))
+      crypto_ = std::move(ecies_x25519_hmac_t());
+    else if (
+        cert_.crypto_type == cert_t::crypto_type_t::EciesX25519Blake
+        && crypto_.type() != typeid(ecies_x25519_blake_t))
+      crypto_ = std::move(ecies_x25519_blake_t());
+
+    if (cert_.sign_type == cert_t::sign_type_t::EdDSA
+        && signing_.type() != typeid(eddsa_t))
+      signing_ = std::move(eddsa_t());
+    else if (
+        cert_.sign_type == cert_t::sign_type_t::RedDSA
+        && signing_.type() != typeid(reddsa_t))
+      signing_ = std::move(reddsa_t());
+    else if (
+        cert_.sign_type == cert_t::sign_type_t::XEdDSA
+        && signing_.type() != typeid(xeddsa_t))
+      signing_ = std::move(xeddsa_t());
+  }
+
+  padding_t padding_;
+  cert_t cert_;
+  crypto_v crypto_;
+  signing_v signing_;
+  hash_t hash_;
+  buffer_t buf_;
 };
 }  // namespace data
 }  // namespace tini2p

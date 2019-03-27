@@ -43,12 +43,27 @@ namespace data
 class OptionsBlock : public Block
 {
  public:
+  enum : std::uint8_t
+  {
+    OptionsLen = 12,
+    TMinOffset = 3,
+    TMaxOffset,
+    RMinOffset,
+    RMaxOffset,
+    TDummyOffset,
+    RDummyOffset = 9,
+    TDelayOffset = 11,
+    RDelayOffset = 13
+  };
+
+  const float CastRatio{16.0}, MinPaddingRatio{0}, MaxPaddingRatio{15.9375};
+
   // avoid obnoxious getters/setters, leave these params public
   float tmin, tmax, rmin, rmax;
   boost::endian::big_uint16_t tdummy, tdelay, rdummy, rdelay;
 
   OptionsBlock()
-      : Block(meta::block::OptionsID, meta::block::OptionsSize),
+      : Block(type_t::Options, OptionsLen),
         tmin(0),
         tmax(0),
         rmin(0),
@@ -65,30 +80,57 @@ class OptionsBlock : public Block
   /// @param begin Begin of the iterator range
   /// @param end End of the iterator range
   template <class BegIt, class EndIt>
-  OptionsBlock(const BegIt begin, const EndIt end)
-      : Block(meta::block::OptionsID)
+  OptionsBlock(const BegIt begin, const EndIt end) : Block(type_t::Options)
   {
     buf_.insert(buf_.begin(), begin, end);
     deserialize();
   }
 
+  OptionsBlock(const OptionsBlock& oth)
+      : Block(type_t::Options, oth.size_),
+        tmin(oth.tmin),
+        tmax(oth.tmax),
+        rmin(oth.rmin),
+        rmax(oth.rmax),
+        tdummy(oth.tdummy),
+        tdelay(oth.tdelay),
+        rdummy(oth.rdummy),
+        rdelay(oth.rdelay)
+  {
+    serialize();
+  }
+
+  void operator=(const OptionsBlock& oth)
+  {
+    buf_ = oth.buf_;
+    size_ = oth.size_;
+    tmin = oth.tmin;
+    tmax = oth.tmax;
+    rmin = oth.rmin;
+    rmax = oth.rmax;
+    tdummy = oth.tdummy;
+    tdelay = oth.tdelay;
+    rdummy = oth.rdummy;
+    rdelay = oth.rdelay;
+  }
+
   /// @brief Serialize options block to buf_
   void serialize()
   {
-    const tini2p::exception::Exception ex{"OptionsBlock", __func__};
+    const exception::Exception ex{"OptionsBlock", __func__};
 
     check_params(ex);
 
-    tini2p::BytesWriter<decltype(buf_)> writer(buf_);
+    tini2p::BytesWriter<buffer_t> writer(buf_);
 
     writer.write_bytes(type_);
     writer.write_bytes(size_);
 
     // annoying cast from float (thanks Java I2P)
-    writer.write_bytes<std::uint8_t>(tmin * meta::block::CastRatio);
-    writer.write_bytes<std::uint8_t>(tmax * meta::block::CastRatio);
-    writer.write_bytes<std::uint8_t>(rmin * meta::block::CastRatio);
-    writer.write_bytes<std::uint8_t>(rmax * meta::block::CastRatio);
+    writer.write_bytes<std::uint8_t>(tmin * CastRatio);
+    writer.write_bytes<std::uint8_t>(tmax * CastRatio);
+    writer.write_bytes<std::uint8_t>(rmin * CastRatio);
+    writer.write_bytes<std::uint8_t>(rmax * CastRatio);
 
     writer.write_bytes(tdummy);
     writer.write_bytes(rdummy);
@@ -99,12 +141,12 @@ class OptionsBlock : public Block
   /// @brief Deserialize options block to buf_
   void deserialize()
   {
-    const tini2p::exception::Exception ex{"OptionsBlock", __func__};
+    const exception::Exception ex{"OptionsBlock", __func__};
 
-    if (buf_.size() != meta::block::HeaderSize + meta::block::OptionsSize)
+    if (buf_.size() != HeaderLen + OptionsLen)
       ex.throw_ex<std::length_error>("invalid buf_ length.");
 
-    tini2p::BytesReader<decltype(buf_)> reader(buf_);
+    tini2p::BytesReader<buffer_t> reader(buf_);
 
     reader.read_bytes(type_);
     reader.read_bytes(size_);
@@ -112,19 +154,19 @@ class OptionsBlock : public Block
     // annoying cast to float (thanks Java I2P)
     std::uint8_t tmp_tmin;
     reader.read_bytes(tmp_tmin);
-    tmin = tmp_tmin / meta::block::CastRatio;
+    tmin = tmp_tmin / CastRatio;
 
     std::uint8_t tmp_tmax;
     reader.read_bytes(tmp_tmax);
-    tmax = tmp_tmax / meta::block::CastRatio;
+    tmax = tmp_tmax / CastRatio;
 
     std::uint8_t tmp_rmin;
     reader.read_bytes(tmp_rmin);
-    rmin = tmp_rmin / meta::block::CastRatio;
+    rmin = tmp_rmin / CastRatio;
 
     std::uint8_t tmp_rmax;
     reader.read_bytes(tmp_rmax);
-    rmax = tmp_rmax / meta::block::CastRatio;
+    rmax = tmp_rmax / CastRatio;
 
     reader.read_bytes(tdummy);
     reader.read_bytes(rdummy);
@@ -134,19 +176,33 @@ class OptionsBlock : public Block
     check_params(ex);
   }
 
- private:
-  void check_params(const tini2p::exception::Exception& ex)
+  constexpr float cast_ratio() const noexcept
   {
-    if (type_ != meta::block::OptionsID)
+    return CastRatio;
+  }
+
+  constexpr float min_padding_ratio() const noexcept
+  {
+    return MinPaddingRatio;
+  }
+
+  constexpr float max_padding_ratio() const noexcept
+  {
+    return MaxPaddingRatio;
+  }
+
+ private:
+  void check_params(const exception::Exception& ex)
+  {
+    if (type_ != type_t::Options)
       ex.throw_ex<std::runtime_error>("invalid block type.");
 
-    if (size_ != meta::block::OptionsSize)
+    if (size_ != OptionsLen)
       ex.throw_ex<std::length_error>("invalid block size.");
 
     // check padding ratios in range (only needed on serializing)
-    const auto check_ratio = [ex](const float ratio) {
-      if (ratio < meta::block::MinPaddingRatio
-          || ratio > meta::block::MaxPaddingRatio)
+    const auto check_ratio = [this, ex](const float ratio) {
+      if (ratio < MinPaddingRatio || ratio > MaxPaddingRatio)
         ex.throw_ex<std::length_error>("invalid padding ratio.");
     };
 

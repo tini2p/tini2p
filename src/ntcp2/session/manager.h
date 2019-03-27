@@ -43,25 +43,24 @@ namespace ntcp2
 /// @brief Class for managing NTCP2 sessions
 class SessionManager
 {
-  tini2p::data::Info* info_;
-  std::unique_ptr<SessionListener> listener_, listener_v6_;
-  std::vector<std::unique_ptr<Session<SessionInitiator>>> out_sessions_;
-  std::mutex out_sessions_mutex_;
-
  public:
+  using info_t = data::Info;  //< RouterInfo trait alias
+  using dest_t = data::Info;  //< Destination trait alias
+  using listener_t = SessionListener;  //< Session listener trait alias
+  using out_session_t = Session<Initiator>;  //< Outbound session trait alias
+  using out_sessions_t = std::vector<out_session_t::shared_ptr>;  //< Outbound session container trait alias
+
   /// @brief Create a session listener for a given RouterInfo and local endpoints
   /// @param info RouterInfo to receive incoming connections
   /// @param ipv4_ep IPv4 Local ASIO endpoint to listen for connections
   /// @param ipv6_ep IPv6 Local ASIO endpoint to listen for connections
   /// @detail Sessions will be created for both IPv4 and IPv6 routers
   SessionManager(
-      tini2p::data::Info* info,
-      const boost::asio::ip::tcp::endpoint& ipv4_ep,
-      const boost::asio::ip::tcp::endpoint& ipv6_ep)
+      info_t::shared_ptr info,
+      const listener_t::session_t::tcp_t::endpoint& ipv4_ep,
+      const listener_t::session_t::tcp_t::endpoint& ipv6_ep)
       : info_(info)
   {
-    using listener_t = decltype(listener_)::element_type;
-
     const exception::Exception ex{"SessionManager", __func__};
 
     if (!info)
@@ -70,8 +69,8 @@ class SessionManager
     if (!ipv4_ep.address().is_v4() || !ipv6_ep.address().is_v6())
       ex.throw_ex<std::invalid_argument>("invalid listener endpoints.");
 
-    listener_ = std::make_unique<listener_t>(info_, ipv4_ep);
-    listener_v6_ = std::make_unique<listener_t>(info_, ipv6_ep);
+    listener_.reset(new listener_t(info_, ipv4_ep));
+    listener_v6_.reset(new listener_t(info_, ipv6_ep));
 
     listener_->Start();
     listener_v6_->Start();
@@ -83,23 +82,24 @@ class SessionManager
   /// @detail Local endpoint can be either IPv4 or IPv6
   /// @detail Incoming sessions will only be created for either IPv4 or IPv6 routers
   /// @detail Outgoing sessions will be created for both IPv4 and IPv6 routers
-  SessionManager(tini2p::data::Info* info, const boost::asio::ip::tcp::endpoint& ep)
+  SessionManager(
+      info_t::shared_ptr info,
+      const listener_t::session_t::tcp_t::endpoint& ep)
       : info_(info)
   {
-    using listener_t = decltype(listener_)::element_type;
+    const exception::Exception ex{"SessionManager", __func__};
 
     if (!info)
-      exception::Exception{"SessionManager", __func__}
-          .throw_ex<std::invalid_argument>("null RouterInfo.");
+      ex.throw_ex<std::invalid_argument>("null RouterInfo.");
 
     if (ep.address().is_v4())
       {
-        listener_ = std::make_unique<listener_t>(info_, ep);
+        listener_.reset(new listener_t(info_, ep));
         listener_->Start();
       }
     else
       {
-        listener_v6_ = std::make_unique<listener_t>(info_, ep);
+        listener_v6_.reset(new listener_t(info_, ep));
         listener_v6_->Start();
       }
   }
@@ -120,18 +120,18 @@ class SessionManager
             session->Stop();
 
           out_sessions_.clear();
-        }
+        }  // end session-lock scope
 
         if (listener_)
           {
             listener_->Stop();
-            listener_.reset(nullptr);
+            listener_.reset();
           }
 
         if (listener_v6_)
           {
             listener_v6_->Stop();
-            listener_v6_.reset(nullptr);
+            listener_v6_.reset();
           }
       }
     catch (const std::exception& ex)
@@ -145,10 +145,8 @@ class SessionManager
   /// @return Non-owning ointer to newly created session
   /// @throw Invalid argument if dest is null
   /// @throw Runtime error if session already exists for given destination
-  decltype(out_sessions_)::value_type::pointer session(tini2p::data::Info* dest)
+  out_session_t::shared_ptr session(dest_t::shared_ptr dest)
   {
-    using session_t = decltype(out_sessions_)::value_type::element_type;
-
     const exception::Exception ex{"SessionManager", __func__};
 
     if (!dest)
@@ -157,49 +155,89 @@ class SessionManager
     std::lock_guard<std::mutex> l(out_sessions_mutex_);
 
     // search for existing session to given destination
+    const auto& id_crypto = dest->identity().crypto();
+
+    if(boost::apply_visitor(
+        [this, ex](const auto& c) -> bool { return blacklisted(c.pubkey()); },
+        id_crypto))
+      ex.throw_ex<std::runtime_error>("session destination is blacklisted.");
+
     const auto it = std::find_if(
         out_sessions_.begin(),
         out_sessions_.end(),
-        [dest](const decltype(out_sessions_)::value_type& session) {
-          return session->key().key == dest->noise_keys().pk;
+        [id_crypto](const out_sessions_t::value_type& session) -> bool {
+          return boost::apply_visitor(
+              [&session](const auto& c) -> bool {
+                return session->key() == c.pubkey();
+              },
+              id_crypto);
         });
 
     if (it != out_sessions_.end())
       {
-        const auto& dest_key = dest->noise_keys().pk;
+        const std::string err_msg(
+            "session already exists for key: "
+            + crypto::Base64::Encode((*it)->key()));
 
-        ex.throw_ex<std::runtime_error>(
-            ("session alread exists for key: "
-             + crypto::Base64::Encode(dest_key.data(), dest_key.size()))
-                .c_str());
+        blacklist_.emplace(std::move((*it)->key()));
+        blacklist_.emplace(std::move((*it)->connect_key()));
+
+        out_sessions_.erase(it);
+        ex.throw_ex<std::runtime_error>(std::move(err_msg));
       }
 
-    out_sessions_.emplace_back(new session_t(dest, info_));
+    out_sessions_.emplace_back(new out_session_t(dest, info_));
 
-    return out_sessions_.back().get();
+    return out_sessions_.back();
   }
 
-  /// @brief Get a non-const pointer to a session listener
+  /// @brief Get a const shared pointer to a session listener
   /// @param ip IP protocol of the listener to retrieve
   /// @throw Invalid argument if ip is invalid protocol
-  decltype(listener_)::pointer listener(const meta::ntcp2::session::IP_t ip)
+  listener_t::const_shared_ptr listener(
+      const listener_t::session_t::meta_t::IP ip) const
   {
-    using tini2p::meta::ntcp2::session::IP_t;
+    using IP = listener_t::session_t::meta_t::IP;
 
-    if (ip != IP_t::v4 && ip != IP_t::v6)
-      exception::Exception{"SessionManager", __func__}
-          .throw_ex<std::invalid_argument>("invalid listener protocol.");
+    const exception::Exception ex{"SessionManager", __func__};
 
-    return ip == IP_t::v4 ? listener_.get() : listener_v6_.get();
+    if (ip != IP::v4 && ip != IP::v6)
+      ex.throw_ex<std::invalid_argument>("invalid listener protocol.");
+
+    return ip == IP::v4 ? listener_ : listener_v6_;
   }
 
-  bool blacklisted(const SessionKey& key) const
+  /// @brief Get a non-const shared pointer to a session listener
+  /// @param ip IP protocol of the listener to retrieve
+  /// @throw Invalid argument if ip is invalid protocol
+  listener_t::shared_ptr listener(const listener_t::session_t::meta_t::IP ip)
   {
-    if (const bool ret = listener_ ? listener_->blacklisted(key) : false)
-      return ret;
+    using IP = listener_t::session_t::meta_t::IP;
 
-    return listener_v6_ ? listener_v6_->blacklisted(key) : false;
+    const exception::Exception ex{"SessionManager", __func__};
+
+    if (ip != IP::v4 && ip != IP::v6)
+      ex.throw_ex<std::invalid_argument>("invalid listener protocol.");
+
+    return ip == IP::v4 ? listener_ : listener_v6_;
   }
+
+  /// @brief Get the blacklisted status of a session key
+  bool blacklisted(const listener_t::key_t& key) const
+  {
+    const bool out_bl = blacklist_.find(key) != blacklist_.end();
+    const bool listenv4_bl = listener_ && listener_->blacklisted(key);
+    const bool listenv6_bl = listener_v6_ && listener_v6_->blacklisted(key);
+
+    return (out_bl || listenv4_bl || listenv6_bl);
+  }
+
+ private:
+  info_t::shared_ptr info_;
+  listener_t::shared_ptr listener_, listener_v6_;
+  out_sessions_t out_sessions_;
+  listener_t::blacklist_t blacklist_;
+  std::mutex out_sessions_mutex_;
 };
 }  // namespace ntcp2
 }  // namespace tini2p

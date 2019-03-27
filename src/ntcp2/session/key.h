@@ -30,31 +30,12 @@
 #ifndef SRC_NTCP2_SESSION_KEY_H_
 #define SRC_NTCP2_SESSION_KEY_H_
 
-#include "src/crypto/key/x25519.h"
+#include "src/crypto/x25519.h"
 
 namespace tini2p
 {
 namespace ntcp2
 {
-/// @struct SessionKey
-/// @brief Storage struct for incoming session keys
-struct SessionKey
-{
-  crypto::x25519::PubKey key;
-
-  SessionKey() : key() {}
-
-  explicit SessionKey(decltype(key)&& pk)
-      : key(std::forward<decltype(key)>(pk))
-  {
-  }
-
-  bool operator<(const SessionKey rhs) const
-  {
-    return std::lexicographical_compare(
-        key.begin(), key.end(), rhs.key.begin(), rhs.key.end());
-  }
-};
 }  // namespace ntcp2
 }  // namespace tini2p
 

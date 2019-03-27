@@ -36,35 +36,6 @@ namespace meta
 {
 namespace block
 {
-enum TerminationSizes
-{
-  TermHeaderSize = 9,
-  MinTermSize = TermHeaderSize,
-  MaxTermSize = MaxSize,
-  MaxTermAddDataSize = MaxTermSize - TermHeaderSize,
-};
-
-enum TerminationReason : std::uint8_t
-{
-  NormalClose = 0,
-  TerminationRecvd,
-  IdleTimeout,
-  RouterShutdown,
-  DataPhaseAEADFail,
-  IncompatibleOpts,
-  IncompatibleSig,
-  ClockSkew,
-  PaddingViolation,
-  AEADFramingError,
-  PayloadFormatError,
-  SessionRequestError,
-  SessionCreatedError,
-  SessionConfirmedError,
-  ReadTimeout,
-  SigVerificationFail,
-  InvalidS,
-  Banned
-};
 }  // namespace block
 }  // namespace meta
 }  // namespace tini2p

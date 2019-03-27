@@ -38,21 +38,21 @@
 
 #include "src/crypto/siphash.h"
 
-namespace hash = tini2p::crypto::hash;
+namespace crypto = tini2p::crypto;
 
 struct SipHashFixture
 {
-  const hash::SipHashKeyPart key_pt1{
+  const crypto::SipHash::key_part_t key_pt1{
       {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07}};
 
-  const hash::SipHashKeyPart key_pt2{
+  const crypto::SipHash::key_part_t key_pt2{
       {0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F}};
 
-  const hash::SipHashIV iv{{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07}};
+  const crypto::SipHash::iv_t iv{{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07}};
 
-  const hash::SipHashDigest digest{{0x3B, 0x62, 0xA9, 0xBA, 0x62, 0x58, 0xF5,
-                                    0x61, 0x0F, 0x83, 0xE2, 0x64, 0xF3, 0x14,
-                                    0x97, 0xB4}};
+  const crypto::SipHash::digest_t digest{{0x3B, 0x62, 0xA9, 0xBA, 0x62, 0x58, 0xF5,
+                                          0x61, 0x0F, 0x83, 0xE2, 0x64, 0xF3, 0x14,
+                                          0x97, 0xB4}};
 };
 
 TEST_CASE_METHOD(SipHashFixture, "SipHash calculates digest", "[sip]")
@@ -60,8 +60,8 @@ TEST_CASE_METHOD(SipHashFixture, "SipHash calculates digest", "[sip]")
   using Catch::Matchers::Equals;
   using vec = std::vector<std::uint8_t>;
 
-  hash::SipHashDigest result;
-  REQUIRE_NOTHROW(hash::SipHash(key_pt1, key_pt2, iv, result));
+  crypto::SipHash::digest_t result;
+  REQUIRE_NOTHROW(crypto::SipHash::Hash(key_pt1, key_pt2, iv, result));
   REQUIRE_THAT(vec(result.begin(), result.end()),
                Equals(vec(digest.begin(), digest.end())));
 }

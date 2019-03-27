@@ -36,33 +36,6 @@ namespace meta
 {
 namespace block
 {
-enum Sizes : std::uint16_t
-{
-  TypeSize = 1,
-  SizeSize = 2,
-  HeaderSize = 3,
-  MaxSize = 65516,
-};
-
-enum Offsets : std::uint8_t
-{
-  TypeOffset = 0,
-  SizeOffset = 1,
-  DataOffset = 3
-};
-
-enum Types : std::uint8_t
-{
-  DateTimeID = 0,
-  OptionsID,
-  RouterInfoID,
-  I2NPMessageID,
-  TerminationID,
-  // 5-223 unknown, see spec
-  // 224-253 + 255 reserved for future use, see spec
-  PaddingID = 254,
-  ReservedID = 255,
-};
 }  // namespace block
 }  // namespace meta
 }  // namespace tini2p

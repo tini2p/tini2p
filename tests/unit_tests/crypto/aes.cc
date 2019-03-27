@@ -35,99 +35,70 @@ namespace crypto = tini2p::crypto;
 
 struct AESFixture
 {
-  AESFixture() : dec(key, iv), enc(key, iv)
+  AESFixture() : k(crypto::AES::create_key_iv()), aes(k.key, k.iv)
   {
-    in.fill(0xBE);
-    crypto::RandBytes(key.data(), key.size());
-    crypto::RandBytes(iv.data(), iv.size());
+    crypto::RandBytes(in);
   }
 
-  crypto::aes::Key key;
-  crypto::aes::IV iv;
-  std::array<std::uint8_t, crypto::aes::BlockLen * 3> in, out;
-  crypto::aes::CBCDecryption dec;
-  crypto::aes::CBCEncryption enc;
+  crypto::AES::key_iv_t k;
+  crypto::FixedSecBytes<crypto::AES::BlockLen * 3> in, out;
+  crypto::AES aes;
 };
 
 TEST_CASE("AES creates key and IV")
 {
-  crypto::aes::KeyIV key_iv;
-
-  REQUIRE_NOTHROW(key_iv = crypto::aes::create_key_iv());
-  REQUIRE(key_iv.key.size() == crypto::aes::KeyLen);
-  REQUIRE(key_iv.iv.size() == crypto::aes::IVLen);
+  crypto::AES::key_iv_t k;
+  REQUIRE(k.key.size() == crypto::AES::KeyLen);
+  REQUIRE(k.iv.size() == crypto::AES::IVLen);
 }
 
-TEST_CASE_METHOD(AESFixture, "AES CBC encryption sets key", "[aes]")
+TEST_CASE_METHOD(AESFixture, "AES CBC sets key", "[aes]")
 {
-  REQUIRE_NOTHROW(crypto::aes::CBCEncryption(key, iv));
-  REQUIRE_NOTHROW(crypto::aes::CBCEncryption(key, iv).rekey(key, iv));
+  REQUIRE_NOTHROW(crypto::AES(k.key, k.iv));
+  REQUIRE_NOTHROW(crypto::AES(k.key, k.iv).rekey(k.key, k.iv));
 }
 
-TEST_CASE_METHOD(AESFixture, "AES CBC decryption sets key", "[aes]")
+TEST_CASE_METHOD(AESFixture, "AES CBC encrypts block(s) of data", "[aes]")
 {
-  REQUIRE_NOTHROW(crypto::aes::CBCDecryption(key, iv));
-  REQUIRE_NOTHROW(crypto::aes::CBCDecryption(key, iv).rekey(key, iv));
+  crypto::AES::block_t in, out;
+  std::array<std::uint8_t, crypto::AES::BlockLen * 3> blocks;
+  crypto::RandBytes(in);
+
+  REQUIRE_NOTHROW(aes.Encrypt(in.data(), in.size()));
 }
 
-TEST_CASE_METHOD(AESFixture, "AES CBC encrypts a block of data", "[aes]")
+TEST_CASE_METHOD(AESFixture, "AES CBC decrypts a block(s) of data", "[aes]")
 {
-  crypto::aes::Block in, out;
-  crypto::RandBytes(in.data(), in.size());
+  crypto::AES::block_t in, out;
+  crypto::FixedSecBytes<crypto::AES::BlockLen * 3> blocks;
+  crypto::RandBytes(in);
 
-  REQUIRE_NOTHROW(enc.Process(out, in));
-
-  REQUIRE_NOTHROW(enc.Process(out.data(), out.size(), in.data(), in.size()));
-}
-
-TEST_CASE_METHOD(AESFixture, "AES CBC encrypts multiple blocks of data", "[aes]")
-{
-  REQUIRE_NOTHROW(enc.Process(out.data(), out.size(), in.data(), in.size()));
-}
-
-TEST_CASE_METHOD(AESFixture, "AES CBC decrypts a block of data", "[aes]")
-{
-  crypto::aes::Block in, out;
-  crypto::RandBytes(in.data(), in.size());
-
-  REQUIRE_NOTHROW(dec.Process(out, in));
-
-  REQUIRE_NOTHROW(dec.Process(out.data(), out.size(), in.data(), in.size()));
-}
-
-TEST_CASE_METHOD(AESFixture, "AES CBC decrypts multiple blocks of data", "[aes]")
-{
-  REQUIRE_NOTHROW(dec.Process(out.data(), out.size(), in.data(), in.size()));
+  REQUIRE_NOTHROW(aes.Decrypt(in.data(), in.size()));
 }
 
 TEST_CASE_METHOD(AESFixture, "AES CBC encrypts and decrypts back to plaintext", "[aes]")
 {
   using Catch::Matchers::Equals;
+  using vec = std::vector<std::uint8_t>;
 
-  REQUIRE_NOTHROW(enc.Process(out.data(), out.size(), in.data(), in.size()));
+  decltype(in) t_in(in);
 
-  // decrypt in place
-  REQUIRE_NOTHROW(dec.Process(out.data(), out.size(), out.data(), out.size()));
+  // encrypt/decrypt buffer in-place
+  REQUIRE_NOTHROW(aes.Encrypt(in.data(), in.size()));
+  REQUIRE_NOTHROW(aes.Decrypt(in.data(), in.size()));
 
   REQUIRE_THAT(
-      std::string(out.begin(), out.end()),
-      Equals(std::string(in.begin(), in.end())));
+      vec(in.begin(), in.end()), Equals(vec(t_in.begin(), t_in.end())));
 }
 
 TEST_CASE_METHOD(AESFixture, "AES CBC rejects null buffer", "[aes]")
 {
-  REQUIRE_THROWS(enc.Process(nullptr, out.size(), in.data(), in.size()));
-  REQUIRE_THROWS(enc.Process(out.data(), out.size(), nullptr, in.size()));
-
-  REQUIRE_THROWS(dec.Process(nullptr, out.size(), in.data(), in.size()));
-  REQUIRE_THROWS(dec.Process(out.data(), out.size(), nullptr, in.size()));
+  REQUIRE_THROWS(aes.Encrypt(nullptr, in.size()));
+  REQUIRE_THROWS(aes.Decrypt(nullptr, in.size()));
 }
 
 TEST_CASE_METHOD(AESFixture, "AES CBC rejects null size", "[aes]")
 {
-  REQUIRE_THROWS(enc.Process(out.data(), 0, in.data(), in.size()));
-  REQUIRE_THROWS(enc.Process(out.data(), out.size(), in.data(), 0));
-
-  REQUIRE_THROWS(dec.Process(out.data(), 0, in.data(), in.size()));
-  REQUIRE_THROWS(dec.Process(out.data(), out.size(), in.data(), 0));
+  REQUIRE_THROWS(aes.Encrypt(in.data(), 0));
+  REQUIRE_THROWS(aes.Decrypt(in.data(), 0));
 }

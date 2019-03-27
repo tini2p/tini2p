@@ -36,39 +36,6 @@ namespace meta
 {
 namespace block
 {
-enum RouterInfoSizes : std::uint16_t
-{
-  FloodFlagSize = 1,
-  RouterHeaderSize = block::HeaderSize + FloodFlagSize,
-  MinRouterInfoSize = 440,  //< min RI (439) + flag (1)
-  MaxRouterInfoSize = MaxSize,
-  MinRIPayloadSize = FloodFlagSize + MinRouterInfoSize,
-  MaxRIPayloadSize = FloodFlagSize + MaxRouterInfoSize,
-  MinMsg3Pt2Size = MinRouterInfoSize + 16,  //< MinRISize + Poly1305Len
-  MaxMsg3Pt2Size = MaxRouterInfoSize + 16,  //< MaxRISize + Poly1305Len
-};
-
-enum RouterInfoOffsets : std::uint8_t
-{
-  FloodFlagOffset = 3,
-  RouterInfoOffset,
-};
-
-enum RouterInfoFlags : std::uint8_t
-{
-  FloodFlag = 0x01,
-};
-
-enum RouterInfoMasks : std::uint8_t
-{
-  FloodFlagMask = 0x01,
-};
-
-enum PaddingSizes : std::uint16_t
-{
-  MinPaddingSize = 0,
-  MaxPaddingSize = MaxMsg3Pt2Size - MinRouterInfoSize,
-};
 }  // namespace block
 }  // namespace meta
 }  // namespace tini2p

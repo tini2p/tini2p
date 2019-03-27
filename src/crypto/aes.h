@@ -30,97 +30,134 @@
 #ifndef SRC_CRYPTO_AES_H_
 #define SRC_CRYPTO_AES_H_
 
-#include <cryptopp/aes.h>
-#include <cryptopp/modes.h>
+#include <algorithm>
+#include <memory>
+#include <vector>
+
+#include <aes.h>
 
 #include "src/exception/exception.h"
-#include "src/ntcp2/meta.h"
 
-#include "src/crypto/meta.h"
-
-#include "src/crypto/key/aes.h"
+#include "src/crypto/keys.h"
+#include "src/crypto/rand.h"
 
 namespace tini2p
 {
 namespace crypto
 {
-namespace aes
+class AES
 {
-enum
-{
-  BlockLen = 16,
-};
-
-using Block = CryptoPP::FixedSizeSecBlock<std::uint8_t, BlockLen>;
-
-/// @brief Template for AES CBC Cipher
-template <class Mode, class Key_t = tini2p::crypto::aes::Key>
-class CBCCipher
-{
-  Mode cipher_;
-
  public:
+  enum
+  {
+    KeyLen = 32,
+    IVLen = 16,
+    BlockLen = 16,
+    AESBits = 256,
+  };
+
+  using key_t = Key<KeyLen>;  //< Key trait alias
+  using iv_t = FixedSecBytes<IVLen>;  //< IV trait alias
+  using key_iv_t = KeyIV<AES>;  // KeyIV trait alias
+  using block_t = FixedSecBytes<BlockLen>;  //< Block trait alias
+
   /// @brief Create a CBC en/decryption cipher
   /// @param key Cipher key (typically responder router hash)
   /// @param iv Cipher IV
-  CBCCipher(const Key_t& key, const IV& iv)
-      : cipher_(key.data(), key.size(), iv.data())
+  template <
+      class Key,
+      class IV,
+      typename = std::enable_if_t<
+          (std::is_same<Key, key_t>::value
+           || std::is_same<Key, key_t::buffer_t>::value)
+          && (std::is_same<IV, iv_t>::value
+              || std::is_same<IV, iv_t::buffer_t>::value)>>
+  AES(const Key& key, const IV& iv) : key_(key), iv_(iv)
   {
   }
 
-  /// @brief Reset the cipher with a new key and IV
+  /// @brief Create a CBC en/decryption cipher
   /// @param key Cipher key (typically responder router hash)
   /// @param iv Cipher IV
-  void rekey(const Key_t& key, const IV& iv)
+  template <
+      class Key,
+      class IV,
+      typename = std::enable_if_t<
+          (std::is_same<Key, key_t>::value
+           || std::is_same<Key, key_t::buffer_t>::value)
+          && (std::is_same<IV, iv_t>::value
+              || std::is_same<IV, iv_t::buffer_t>::value)>>
+  void rekey(const Key& key, const IV& iv)
   {
-    cipher_.SetKeyWithIV(key.data(), key.size(), iv.data(), iv.size());
+    std::copy_n(key.data(), KeyLen, key_.data());
+    std::copy_n(iv.data(), IVLen, iv_.data());
   }
 
-  /// @brief Process one cipher block
-  /// @param out Output cipher block
-  /// @param in Input cipher block
-  void Process(Block& out, const Block& in)
+  /// @brief Encrypt a buffer of data (in-place)
+  /// @param in_out In-place buffer for processing
+  /// @param in_out_len In-place buffer length 
+  void Encrypt(
+      std::uint8_t* in_out,
+      const std::size_t in_out_len)
   {
-    cipher_.ProcessData(out.data(), in.data(), BlockLen);
+    Process(in_out, in_out_len, Mode::Encrypt, {"AES", __func__});
   }
 
-  /// @brief Process a buffer of data
-  /// @param out Output buffer after cipher processing 
-  /// @param out_len Output buffer length 
-  /// @param in Input buffer before cipher processing 
-  /// @param in_len Input buffer buffer length
+  /// @brief Decrypt a buffer of data (in-place)
+  /// @param out In-place buffer for processing
+  /// @param out_len In-place buffer length
+  void Decrypt(std::uint8_t* in_out, const std::size_t in_out_len)
+  {
+    Process(in_out, in_out_len, Mode::Decrypt, {"AES", __func__});
+  }
+
+  /// @brief Create an AES key and IV
+  /// @return AES key and IV
+  static key_iv_t create_key_iv()
+  {
+    key_iv_t k;
+
+    RandBytes(k.key);
+    RandBytes(k.iv);
+
+    return std::move(k);
+  }
+
+ private:
+  enum struct Mode
+  {
+    Encrypt,
+    Decrypt,
+  };
+
   void Process(
-      std::uint8_t* out,
-      const std::size_t out_len,
-      const std::uint8_t* in,
-      const std::size_t in_len)
+      std::uint8_t* in_out,
+      const std::size_t in_out_len,
+      const Mode mode,
+      const exception::Exception& ex)
   {
-    const tini2p::exception::Exception ex{"CBCCipher", __func__};
-
-    if (!out || !in)
+    if (!in_out)
       ex.throw_ex<std::invalid_argument>("null buffers.");
 
-    if (!out_len || !in_len)
+    if (!in_out_len)
       ex.throw_ex<std::invalid_argument>("null buffer lenghts.");
 
-    if (out_len != in_len)
-      ex.throw_ex<std::length_error>(
-          "input and output buffer must have same length.");
-
-    if (in_len % BlockLen != 0)
+    if (in_out_len % BlockLen != 0)
       ex.throw_ex<std::length_error>(
           "buffer must be a multiple of AES block size.");
 
-    cipher_.ProcessData(out, in, in_len);
+    AES_ctx ctx;
+    AES_init_ctx_iv(&ctx, key_.data(), iv_.data());
+
+    if (mode == Mode::Encrypt)
+      AES_CBC_encrypt_buffer(&ctx, in_out, in_out_len);
+    else
+      AES_CBC_decrypt_buffer(&ctx, in_out, in_out_len);
   }
+
+  key_t key_;
+  iv_t iv_;
 };
-
-/// @brief Encryption mode alias for clarity, usability
-using CBCEncryption = CBCCipher<CryptoPP::CBC_Mode<CryptoPP::AES>::Encryption>;
-
-/// @brief Decryption mode alias for clarity, usability
-using CBCDecryption = CBCCipher<CryptoPP::CBC_Mode<CryptoPP::AES>::Decryption>;
-}  // namespace aes
 }  // namespace crypto
 }  // namespace tini2p
 

@@ -31,16 +31,16 @@
 
 #include "tests/unit_tests/mock/handshake.h"
 
-using tini2p::data::Info;
-
-using BlockPtr = std::unique_ptr<tini2p::data::Block>;
-using tini2p::data::DateTimeBlock;
-using tini2p::data::PaddingBlock;
-using tini2p::data::RouterInfoBlock;
-using tini2p::data::TerminationBlock;
-
 struct DataPhaseFixture : public MockHandshake
 {
+  using Info = tini2p::data::Info;
+
+  using DateTimeBlock = tini2p::data::DateTimeBlock;
+  using PaddingBlock = tini2p::data::PaddingBlock;
+  using I2NPBlock = tini2p::data::I2NPBlock;
+  using InfoBlock = tini2p::data::InfoBlock;
+  using TerminationBlock = tini2p::data::TerminationBlock;
+
   DataPhaseFixture()
   {
     ValidSessionRequest();
@@ -49,7 +49,7 @@ struct DataPhaseFixture : public MockHandshake
     InitializeDataPhase();
   }
 
-  std::unique_ptr<Info> ri;
+  Info::shared_ptr ri;
 };
 
 TEST_CASE_METHOD(
@@ -57,10 +57,13 @@ TEST_CASE_METHOD(
     "DataPhase initiator and responder encrypt and decrypt a message",
     "[dp]")
 {
-  dp_message.blocks.emplace_back(BlockPtr(new DateTimeBlock()));
+  dp_message.add_block(DateTimeBlock());
 
   REQUIRE_NOTHROW(dp_initiator->Write(dp_message));
   REQUIRE_NOTHROW(dp_responder->Read(dp_message));
+
+  REQUIRE_NOTHROW(dp_responder->Write(dp_message));
+  REQUIRE_NOTHROW(dp_initiator->Read(dp_message));
 }
 
 TEST_CASE_METHOD(
@@ -68,10 +71,10 @@ TEST_CASE_METHOD(
     "DataPhase responder encrypts and decrypts a message with blocks",
     "[dp]")
 {
-  ri = std::make_unique<Info>();
-  dp_message.blocks.emplace_back(BlockPtr(new DateTimeBlock()));
-  dp_message.blocks.emplace_back(BlockPtr(new RouterInfoBlock(ri.get())));
-  dp_message.blocks.emplace_back(BlockPtr(new PaddingBlock(17)));
+  ri = std::make_shared<Info>();
+  dp_message.add_block(DateTimeBlock());
+  dp_message.add_block(InfoBlock(ri));
+  dp_message.add_block(PaddingBlock(17));
 
   REQUIRE_NOTHROW(dp_initiator->Write(dp_message));
   REQUIRE_NOTHROW(dp_responder->Read(dp_message));
@@ -88,77 +91,84 @@ TEST_CASE_METHOD(
 
 TEST_CASE_METHOD(
     DataPhaseFixture,
-    "DataPhase initiator and responder reject invalid MAC",
+    "DataPhase responder rejects invalid MAC",
     "[dp]")
 {
-  dp_message.blocks.emplace_back(BlockPtr(new DateTimeBlock()));
+  using Catch::Matchers::Equals;
+  using vec = std::vector<std::uint8_t>;
 
+  dp_message.add_block(DateTimeBlock());
+  dp_message.serialize();
+
+  const auto& buf = dp_message.buffer();
+  vec exp_msg(buf.begin(), buf.end());
   REQUIRE_NOTHROW(dp_initiator->Write(dp_message));
 
   // invalidate ciphertext
-  crypto::RandBytes(dp_message.buffer.data(), dp_message.buffer.size());
-  REQUIRE_THROWS(dp_responder->Read(dp_message));
+  dp_message.buffer().zero();
+  REQUIRE_NOTHROW(dp_responder->Read(dp_message));
+  REQUIRE_THAT(static_cast<vec>(buf), !Equals(exp_msg));
+}
 
+TEST_CASE_METHOD(
+    DataPhaseFixture,
+    "DataPhase initiator rejects invalid MAC",
+    "[dp]")
+{
+  using Catch::Matchers::Equals;
+  using vec = std::vector<std::uint8_t>;
+
+  dp_message.add_block(DateTimeBlock());
+  dp_message.serialize();
+
+  const auto& buf = dp_message.buffer();
+  const vec exp_msg(buf.begin(), buf.end());
   REQUIRE_NOTHROW(dp_responder->Write(dp_message));
 
   // invalidate ciphertext
-  crypto::RandBytes(dp_message.buffer.data(), dp_message.buffer.size());
-  REQUIRE_THROWS(dp_initiator->Read(dp_message));
+  dp_message.buffer().zero();
+  REQUIRE_NOTHROW(dp_initiator->Read(dp_message));
+  REQUIRE_THAT(static_cast<vec>(buf), !Equals(exp_msg));
 }
 
 TEST_CASE_METHOD(
     DataPhaseFixture,
-    "DataPhase initiator and responder reject invalid block order",
+    "DataPhase message rejects invalid block order",
     "[dp]")
 {
   // invalid order, padding must be last block
-  dp_message.blocks.emplace_back(BlockPtr(new PaddingBlock(3)));
-  dp_message.blocks.emplace_back(BlockPtr(new DateTimeBlock()));
+  dp_message.add_block(PaddingBlock(3));
+  REQUIRE_THROWS(dp_message.add_block(DateTimeBlock()));
 
-  REQUIRE_THROWS(dp_initiator->Write(dp_message));
-  REQUIRE_THROWS(dp_responder->Write(dp_message));
-
-  dp_message.blocks.clear();
+  dp_message.clear_blocks();
 
   // invalid order, termination must only be followed by padding block
-  dp_message.blocks.emplace_back(BlockPtr(new TerminationBlock()));
-  dp_message.blocks.emplace_back(BlockPtr(new DateTimeBlock()));
-
-  REQUIRE_THROWS(dp_initiator->Write(dp_message));
-  REQUIRE_THROWS(dp_responder->Write(dp_message));
+  dp_message.add_block(TerminationBlock());
+  REQUIRE_THROWS(dp_message.add_block(DateTimeBlock()));
 }
 
 TEST_CASE_METHOD(
     DataPhaseFixture,
-    "DataPhase initiator and responder reject invalid size",
+    "DataPhase message rejects invalid size",
     "[dp]")
 {
-  namespace block_m = tini2p::meta::block;
+  using Catch::Matchers::Equals;
+  using vec = std::vector<std::uint8_t>;
 
   // add blocks to make message oversized
-  dp_message.blocks.emplace_back(BlockPtr(new TerminationBlock()));
+  I2NPBlock i2np_msg;
+  i2np_msg.resize_message(I2NPBlock::MaxMsgLen);
+  dp_message.add_block(std::move(i2np_msg));
 
-  reinterpret_cast<TerminationBlock*>(dp_message.blocks.back().get())
-      ->add_data()
-      .resize(block_m::MaxTermAddDataSize);
-
-  dp_message.blocks.emplace_back(
-      BlockPtr(new PaddingBlock(block_m::MaxPaddingSize)));
-
-  REQUIRE_THROWS(dp_initiator->Write(dp_message));
-  REQUIRE_THROWS(dp_responder->Write(dp_message));
-
-  dp_message.blocks.clear();
-  dp_message.blocks.emplace_back(BlockPtr(new DateTimeBlock()));
-  REQUIRE_NOTHROW(dp_initiator->Write(dp_message));
-
-  // invalidate the size in the raw message buffer
-  crypto::RandBytes(dp_message.buffer.data(), meta::data_phase::SizeSize);
-  REQUIRE_THROWS(dp_responder->Read(dp_message));
+  REQUIRE_THROWS(
+      dp_message.add_block(PaddingBlock(PaddingBlock::MaxPaddingLen)));
 }
 
-TEST_CASE("DataPhase rejects null handshake state", "[dp]")
+TEST_CASE_METHOD(
+    DataPhaseFixture,
+    "DataPhase rejects null handshake state",
+    "[dp]")
 {
-  REQUIRE_THROWS(DataPhase<Initiator>(nullptr));
-  REQUIRE_THROWS(DataPhase<Responder>(nullptr));
+  REQUIRE_THROWS(sess_init_t::data_impl_t(nullptr));
+  REQUIRE_THROWS(sess_resp_t::data_impl_t(nullptr));
 }

@@ -36,43 +36,6 @@ namespace meta
 {
 namespace block
 {
-enum I2NPSizes
-{
-  I2NPHeaderSize = 9,
-  MinI2NPSize = I2NPHeaderSize,
-  MaxI2NPSize = MaxSize,
-};
-
-enum I2NPMessageType : std::uint8_t
-{
-  Reserved = 0,
-  DatabaseStore,
-  DatabaseLookup,
-  DatabaseSearchReply,
-  DeliveryStatus = 10,
-  Garlic,
-  TunnelData = 18,
-  TunnelGateway,
-  Data,
-  TunnelBuild,
-  TunnelBuildReply,
-  VariableTunnelBuild,
-  VariableTunnelBuildReply,
-  FutureReserved = 255,
-};
-
-enum I2NPOffsets
-{
-  I2NPTypeOffset = 3,
-  MessageIDOffset = 4,
-  ExpirationOffset = 8,
-  MessageOffset = 12,
-};
-
-enum I2NPLimits
-{
-  DefaultI2NPExp = 120,  //< in seconds
-};
 }  // namespace block
 }  // namespace meta
 }  // namespace tini2p

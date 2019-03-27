@@ -1,0 +1,24 @@
+version: 2
+jobs:
+  build:
+    docker:
+      - image: tini2p/tini2p-ci
+
+    steps:
+      - checkout
+
+      - run:
+          name: Update submodules
+          command: git submodule update --init --recursive
+
+      - run:
+          name: Build coverage tests
+          command: make -j2 coverage
+
+      - run:
+          name: Run tests
+          command: ./build/tini2p-tests
+
+      - run:
+          name: Run coveralls
+          command: coveralls -b $(pwd) -e deps -e tests --exclude-lines-pattern "/usr/{lib,include}/*"

@@ -57,11 +57,16 @@ TEST_CASE_METHOD(
   REQUIRE_NOTHROW(scr_responder->ProcessMessage(scr_message));
 }
 
-TEST_CASE("SessionCreated rejects null handshake state", "[scr]")
+TEST_CASE_METHOD(
+    SessionCreatedFixture,
+    "SessionCreated rejects null handshake state",
+    "[scr]")
 {
-  using tini2p::data::IdentHash;
-  using tini2p::crypto::aes::IV;
+  using hash_t = tini2p::data::Identity::hash_t;
 
-  REQUIRE_THROWS(SessionCreated<Initiator>(nullptr, {}, IdentHash(), IV()));
-  REQUIRE_THROWS(SessionCreated<Responder>(nullptr, {}, IdentHash(), IV()));
+  REQUIRE_THROWS(sess_init_t::created_impl_t(
+      nullptr, request_msg_t{}, hash_t{}, obfse_t::iv_t{}));
+
+  REQUIRE_THROWS(sess_resp_t::created_impl_t(
+      nullptr, request_msg_t{}, hash_t{}, obfse_t::iv_t{}));
 }

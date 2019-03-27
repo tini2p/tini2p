@@ -33,6 +33,7 @@
 #include <boost/endian/arithmetic.hpp>
 
 #include "src/bytes.h"
+#include "src/crypto/sec_bytes.h"
 
 #include "src/data/blocks/meta.h"
 
@@ -43,45 +44,58 @@ namespace data
 /// @brief Container for NTCP2 SessionConfirmed + DataPhase blocks
 class Block
 {
- protected:
-  meta::block::Types type_;
-  boost::endian::big_uint16_t size_;
-  std::vector<std::uint8_t> buf_;
-
-  /// @brief Create an empty Block of a given type
-  /// @detail Intended to be called by inheriting classes
-  Block(const meta::block::Types type)
-      : type_(type), size_(0), buf_{}
-  {
-  }
-
-  /// @brief Create a Block of a given type and size
-  /// @param type Type of block to create
-  /// @param size Size of the block payload
-  /// @detail Intended to be called by inheriting classes
-  Block(const meta::block::Types type, const std::uint16_t size)
-      : type_(type), size_(size)
-  {
-    buf_.resize(meta::block::HeaderSize + size);
-  }
-
  public:
+  enum : std::uint16_t
+  {
+    TypeLen = 1,
+    SizeLen = 2,
+    HeaderLen = 3,
+    MaxLen = 65516,
+  };
+
+  enum : std::uint8_t
+  {
+    TypeOffset = 0,
+    SizeOffset = 1,
+    DataOffset = 3
+  };
+
+  enum struct Type : std::uint8_t
+  {
+    DateTime = 0,
+    Options,
+    Info,
+    I2NP,
+    Termination,
+    // 5-223 unknown, see spec
+    // 224-253 + 255 reserved for future use, see spec
+    Padding = 254,
+    Reserved = 255,
+  };
+
+  using type_t = Type;  //< Type trait alias
+  using buffer_t = crypto::SecBytes;  //< Buffer trait alias
+  using size_type = boost::endian::big_uint16_t;  //< Size type trait alias
+  using pointer = Block*;  //< Non-owning pointer trait alias
+  using unique_ptr = std::unique_ptr<Block>;  //< Unique pointer trait alias
+  using shared_ptr = std::shared_ptr<Block>;  //< Shared pointer trait alias
+
   virtual ~Block() = default;
 
   /// @brief Get a const reference to the buffer
-  const decltype(buf_)& buffer() const noexcept
+  const buffer_t& buffer() const noexcept
   {
     return buf_;
   }
 
   /// @brief Get a non-const reference to the buffer
-  decltype(buf_)& buffer() noexcept
+  buffer_t& buffer() noexcept
   {
     return buf_;
   }
 
   /// @brief Get the block type
-  decltype(type_) type() const noexcept
+  type_t type() const noexcept
   {
     return type_;
   }
@@ -89,7 +103,7 @@ class Block
   /// @brief Get the block's total size
   std::uint16_t size() const noexcept
   {
-    return meta::block::HeaderSize + size_;
+    return HeaderLen + size_;
   }
 
   /// @brief get the payload data size
@@ -105,6 +119,28 @@ class Block
   /// @brief Deserialize block from buffer
   /// @detail Must be implemented by inheriting classes
   virtual void deserialize() = 0;
+
+ protected:
+  /// @brief Create an empty Block of a given type
+  /// @detail Intended to be called by inheriting classes
+  Block(const type_t type)
+      : type_(type), size_(0), buf_{}
+  {
+  }
+
+  /// @brief Create a Block of a given type and size
+  /// @param type Type of block to create
+  /// @param size Size of the block payload
+  /// @detail Intended to be called by inheriting classes
+  Block(const type_t type, const std::uint16_t size)
+      : type_(type), size_(size)
+  {
+    buf_.resize(HeaderLen + size);
+  }
+
+  type_t type_;
+  size_type size_;
+  buffer_t buf_;
 };
 }  // namespace data
 }  // namespace tini2p

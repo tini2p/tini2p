@@ -43,13 +43,14 @@ struct SessionConfirmedKDFFixture : public MockHandshake
 
     // switch roles from SessionRequest
     initiator_kdf =
-        std::make_unique<SessionCreatedConfirmedKDF>(responder_state);
+        std::make_unique<sess_init_t::confirmed_impl_t::kdf_t>(responder_state);
 
     responder_kdf =
-        std::make_unique<SessionCreatedConfirmedKDF>(initiator_state);
+        std::make_unique<sess_resp_t::confirmed_impl_t::kdf_t>(initiator_state);
   }
 
-  std::unique_ptr<SessionCreatedConfirmedKDF> initiator_kdf, responder_kdf;
+  std::unique_ptr<sess_init_t::confirmed_impl_t::kdf_t> initiator_kdf;
+  std::unique_ptr<sess_resp_t::confirmed_impl_t::kdf_t> responder_kdf;
 };
 
 TEST_CASE_METHOD(
@@ -58,7 +59,7 @@ TEST_CASE_METHOD(
     "[scr_kdf]")
 {
   // derive keys with SessionRequest ciphertext + padding
-  REQUIRE_NOTHROW(initiator_kdf->derive_keys(srq_message));
+  REQUIRE_NOTHROW(initiator_kdf->Derive(srq_message));
 }
 
 TEST_CASE_METHOD(
@@ -67,5 +68,5 @@ TEST_CASE_METHOD(
     "[scr_kdf]")
 {
   // derive keys with SessionRequest ciphertext + padding
-  REQUIRE_NOTHROW(responder_kdf->derive_keys(srq_message));
+  REQUIRE_NOTHROW(responder_kdf->Derive(srq_message));
 }

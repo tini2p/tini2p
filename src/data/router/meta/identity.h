@@ -38,22 +38,6 @@ namespace router
 {
 namespace identity
 {
-enum Sizes : std::uint16_t
-{
-  MinSize = 387,  // DSA cert
-  DefaultSize = 391,  // Ed25519 key cert
-  MaxSize = DefaultSize,
-  PaddingSize = 96,  // DsaPkLen(128) - Ed25519PkLen(32), see spec
-};
-
-enum Offsets : std::uint16_t
-{
-  CryptoKeyOffset = 0,
-  PaddingOffset = CryptoKeyOffset + tini2p::crypto::elgamal::PubKeyLen,
-  SignKeyOffset = PaddingOffset + PaddingSize,
-  CertOffset = SignKeyOffset + tini2p::crypto::ed25519::PubKeyLen,
-  CertSizeOffset = CertOffset + cert::CertTypeSize,
-};
 }  // namespace identity
 }  // namespace router
 }  // namespace meta

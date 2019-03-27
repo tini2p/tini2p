@@ -54,8 +54,22 @@ TEST_CASE_METHOD(
     "SessionConfirmed responder reads a written message",
     "[sco]")
 {
+  auto ri = sco_message.info_block.info();
   REQUIRE_NOTHROW(sco_initiator->ProcessMessage(sco_message, srq_message.options));
   REQUIRE_NOTHROW(sco_responder->ProcessMessage(sco_message, srq_message.options));
+  auto ret_ri = sco_message.info_block.info();
+
+  using crypto_t = tini2p::crypto::EciesX25519<tini2p::crypto::HmacSha256>;
+  REQUIRE(ri->identity().hash() == ret_ri->identity().hash());
+  REQUIRE(
+      boost::get<crypto_t>(ri->identity().crypto()).pubkey()
+      == boost::get<crypto_t>(ret_ri->identity().crypto()).pubkey());
+
+  crypto_t::pubkey_t s(tini2p::crypto::Base64::Decode(
+      ret_ri->options().entry(std::string("s"))));
+
+  REQUIRE(
+      boost::get<crypto_t>(ret_ri->identity().crypto()).pubkey() == s);
 }
 
 TEST_CASE_METHOD(
@@ -99,12 +113,15 @@ TEST_CASE_METHOD(
   --sco_message.data[0];  // reset
 
   // Invalidate part two
-  ++sco_message.data[meta::session_confirmed::PartOneSize];
+  ++sco_message.data[confirmed_msg_t::PartOneSize];
   REQUIRE_THROWS(sco_responder->ProcessMessage(sco_message, srq_message.options));
 }
 
-TEST_CASE("SessionConfirmed rejects null handshake state", "[sco]")
+TEST_CASE_METHOD(
+    SessionConfirmedFixture,
+    "SessionConfirmed rejects null handshake state",
+    "[sco]")
 {
-  REQUIRE_THROWS(SessionConfirmed<Initiator>(nullptr, {}));
-  REQUIRE_THROWS(SessionConfirmed<Responder>(nullptr, {}));
+  REQUIRE_THROWS(sess_init_t::confirmed_impl_t(nullptr, created_msg_t{}));
+  REQUIRE_THROWS(sess_resp_t::confirmed_impl_t(nullptr, created_msg_t{}));
 }

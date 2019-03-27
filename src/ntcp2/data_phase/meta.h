@@ -38,21 +38,6 @@ namespace ntcp2
 {
 namespace data_phase
 {
-enum
-{
-  SizeSize = 2,
-  AskStrSize = 4,
-  SipStrSize = 7,
-  SipMasterInSize = tini2p::crypto::hash::Sha256Len + SipStrSize,
-  MinSize = SizeSize,
-  MaxSize = 65535 + MinSize
-};
-
-enum Direction
-{
-  AliceToBob,
-  BobToAlice
-};
 }  // namespace data_phase
 }  // namespace ntcp2
 }  // namespace meta

@@ -31,7 +31,9 @@
 
 #include "src/ntcp2/session_request/kdf.h"
 
-using namespace tini2p::ntcp2;
+using tini2p::ntcp2::Initiator;
+using tini2p::ntcp2::Responder;
+using tini2p::ntcp2::SessionRequestKDF;
 
 struct SessionRequestKDFFixture
 {
@@ -39,8 +41,8 @@ struct SessionRequestKDFFixture
   {
     const tini2p::exception::Exception ex{"SessionRequestKDFFixture", __func__};
 
-    noise::init_handshake<Initiator>(&initiator_state, ex);
-    noise::init_handshake<Responder>(&responder_state, ex);
+    tini2p::ntcp2::noise::init_handshake<Initiator>(&initiator_state, ex);
+    tini2p::ntcp2::noise::init_handshake<Responder>(&responder_state, ex);
 
     initiator_kdf = std::make_unique<SessionRequestKDF>(initiator_state);
     responder_kdf = std::make_unique<SessionRequestKDF>(responder_state);
@@ -48,7 +50,7 @@ struct SessionRequestKDFFixture
 
   NoiseHandshakeState *initiator_state, *responder_state;
   std::unique_ptr<SessionRequestKDF> initiator_kdf, responder_kdf;
-  tini2p::crypto::x25519::PubKey key;
+  tini2p::crypto::X25519::pubkey_t key;
 };
 
 TEST_CASE_METHOD(
@@ -73,7 +75,7 @@ TEST_CASE_METHOD(
     "[srq_kdf]")
 {
   REQUIRE_NOTHROW(initiator_kdf->generate_keys());
-  REQUIRE_NOTHROW(initiator_kdf->derive_keys(key));
+  REQUIRE_NOTHROW(initiator_kdf->Derive(key));
 }
 
 TEST_CASE_METHOD(
@@ -82,7 +84,7 @@ TEST_CASE_METHOD(
     "[srq_kdf]")
 {
   REQUIRE_NOTHROW(responder_kdf->generate_keys());
-  REQUIRE_NOTHROW(responder_kdf->derive_keys());
+  REQUIRE_NOTHROW(responder_kdf->Derive());
 }
 
 TEST_CASE_METHOD(
@@ -91,7 +93,7 @@ TEST_CASE_METHOD(
     "[srq_kdf]")
 {
   REQUIRE_NOTHROW(initiator_kdf->generate_keys());
-  REQUIRE_THROWS(initiator_kdf->derive_keys());
+  REQUIRE_THROWS(initiator_kdf->Derive());
 }
 
 TEST_CASE_METHOD(
@@ -100,7 +102,7 @@ TEST_CASE_METHOD(
     "[srq_kdf]")
 {
   REQUIRE_NOTHROW(initiator_kdf->set_remote_key(key));
-  REQUIRE_THROWS(initiator_kdf->derive_keys());
+  REQUIRE_THROWS(initiator_kdf->Derive());
 }
 
 TEST_CASE_METHOD(
@@ -108,7 +110,7 @@ TEST_CASE_METHOD(
     "SessionRequestKDF fails to derive responder keys without local keypair",
     "[srq_kdf]")
 {
-  REQUIRE_THROWS(responder_kdf->derive_keys());
+  REQUIRE_THROWS(responder_kdf->Derive());
 }
 
 TEST_CASE("SessionRequestKDF rejects null handshake state", "[srq_kdf]")

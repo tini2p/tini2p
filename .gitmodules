@@ -1,6 +1,6 @@
 [submodule "deps/noise-c"]
 	path = deps/noise-c
-	url = https://github.com/tini2p/noise-c.git
-[submodule "deps/cryptopp"]
-	path = deps/cryptopp
-	url = https://github.com/weidai11/cryptopp.git
+	url = https://gitlab.com/tini2p/noise-c.git
+[submodule "deps/tiny-AES-c"]
+	path = deps/tiny-AES-c
+	url = https://gitlab.com/tini2p/tiny-AES-c.git
