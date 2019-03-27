@@ -67,7 +67,7 @@ function(AddLibreSSL)
   target_include_directories(tini2p-priv INTERFACE ${LibreSSL_INCLUDE_DIR})
   target_link_libraries(tini2p-priv INTERFACE ${LibreSSL_LIBRARIES})
 endfunction()
-
+#------------------------
 if (NOT ${WITH_LIBRESSL})
   find_package(OpenSSL OPTIONAL)
   if (NOT ${OpenSSL_FOUND})
@@ -93,7 +93,7 @@ endif()
 target_link_libraries(tini2p-priv INTERFACE NoiseC::NoiseC)
 # end-noise-c
 
-# Find libSodium crypto library
+# Find libSodium library
 find_package(sodium REQUIRED)
 if(NOT ${sodium_FOUND})
   message(FATAL_ERROR "libSodium not found or requirement not satisfied.")
@@ -106,19 +106,17 @@ else()
 endif()
 # end-sodium
 
-# Include tiny-AES-c
-target_include_directories(tini2p-priv INTERFACE ${CMAKE_SOURCE_DIR}/deps/tiny-AES-c) 
-# end-tiny-AES-c
-
 find_package(Threads)
 target_link_libraries(tini2p-priv INTERFACE ${CMAKE_THREAD_LIBS_INIT})
 
+# Find Boost libraries
 find_package(Boost 1.66 REQUIRED COMPONENTS system thread)
 if (NOT Boost_FOUND)
   message(FATAL_ERROR "Boost not found or requirement not satisfied.")
 endif()
 
-target_link_libraries(tini2p-priv INTERFACE Boost::system Boost::thread)
+target_link_libraries(tini2p-priv INTERFACE ${Boost_SYSTEM_LIBRARY} ${Boost_THREAD_LIBRARY})
+# end-boost
 
 add_subdirectory(src)
 
