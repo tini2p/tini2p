@@ -31,10 +31,12 @@
 #define SRC_CRYPTO_AES_H_
 
 #include <algorithm>
+#include <iostream>
 #include <memory>
 #include <vector>
 
-#include <aes.h>
+#include <openssl/aes.h>
+#include <openssl/evp.h>
 
 #include "src/exception/exception.h"
 
@@ -72,8 +74,14 @@ class AES
            || std::is_same<Key, key_t::buffer_t>::value)
           && (std::is_same<IV, iv_t>::value
               || std::is_same<IV, iv_t::buffer_t>::value)>>
-  AES(const Key& key, const IV& iv) : key_(key), iv_(iv)
+  AES(const Key& key, const IV& iv)
+    : key_(key), iv_(iv), ctx_(EVP_CIPHER_CTX_new())
   {
+  }
+
+  ~AES()
+  {
+    EVP_CIPHER_CTX_free(ctx_);
   }
 
   /// @brief Create a CBC en/decryption cipher
@@ -124,10 +132,12 @@ class AES
   }
 
  private:
-  enum struct Mode
+  using ctx_t = EVP_CIPHER_CTX;  //< AES context trait alias
+
+  enum struct Mode : int
   {
-    Encrypt,
     Decrypt,
+    Encrypt,
   };
 
   void Process(
@@ -146,15 +156,28 @@ class AES
       ex.throw_ex<std::length_error>(
           "buffer must be a multiple of AES block size.");
 
-    AES_ctx ctx;
-    AES_init_ctx_iv(&ctx, key_.data(), iv_.data());
+    // init AES context
+    EVP_CipherInit_ex(
+      ctx_,
+      EVP_aes_256_cbc(),
+      NULL,
+      key_.data(),
+      iv_.data(),
+      static_cast<int>(mode));
+    EVP_CIPHER_CTX_set_padding(ctx_, 0);  // no padding
 
-    if (mode == Mode::Encrypt)
-      AES_CBC_encrypt_buffer(&ctx, in_out, in_out_len);
-    else
-      AES_CBC_decrypt_buffer(&ctx, in_out, in_out_len);
+    // perform cipher rounds
+    const std::uint32_t rounds(in_out_len / BlockLen);
+    int out_len(0);
+    for (std::uint32_t i = 0; i < rounds; ++i)
+      EVP_CipherUpdate(ctx_, in_out + (i * BlockLen), &out_len, in_out + (i * BlockLen), BlockLen); 
+
+    // finalize and reset the context
+    EVP_CipherFinal_ex(ctx_, in_out + ((rounds - 1) * BlockLen), &out_len);
+    EVP_CIPHER_CTX_reset(ctx_);
   }
 
+  ctx_t* ctx_;
   key_t key_;
   iv_t iv_;
 };

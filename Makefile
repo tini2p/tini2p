@@ -35,12 +35,13 @@ cmake_target = all
 cmake-tini2p  =
 
 cmake-debug      = cmake -D CMAKE_BUILD_TYPE=Debug
+cmake-debug      = cmake -D CMAKE_BUILD_TYPE=Release
 cmake-coverage   = -D WITH_COVERAGE=ON
 cmake-tests      = -D WITH_TESTS=ON
 cmake-net-tests  = -D WITH_NET_TESTS=ON
 
 noise-c = deps/noise-c
-cryptopp = deps/cryptopp
+libressl = deps/libressl
 
 build = build/
 
@@ -56,19 +57,26 @@ define PREP_NOISE_C
 	if [[! -d build ]]; then mkdir build; fi;
 endef
 
+define PREP_LIBRESSL
+  cd $(libressl); \
+	if [[! -d build ]]; then mkdir build; fi;
+endef
+
 define CLEAN_NOISE_C
   cd $(noise-c); \
   rm -rf build/*; \
 	make clean;
 endef
 
-define CLEAN_CRYPTOPP
-  cd $(cryptopp); \
+define CLEAN_LIBRESSL
+  cd $(libressl); \
+  rm -rf build/*; \
 	make clean;
 endef
 
 deps:
 	$(call PREP_NOISE_C)
+	$(call PREP_LIBRESSL)
 
 all: deps
 
@@ -89,6 +97,6 @@ clean:
 
 clean-deps:
 	$(call CLEAN_NOISE_C)
-	$(call CLEAN_CRYPTOPP)
+	$(call CLEAN_LIBRESSL)
 
 .PHONY: all tests net-tests coverage clean clean-deps
