@@ -179,9 +179,16 @@ class RedDSASha512
   {
     const exception::Exception ex{"RedDSA", __func__};
 
-    ex.throw_ex<std::runtime_error>("unimplemented.");
+    keypair_t k;
+    RandBytes(k.pvtkey);
 
-    return keypair_t{};
+    auto* pvtkey_ptr = k.pvtkey.data();
+    crypto_core_ed25519_scalar_reduce(pvtkey_ptr, pvtkey_ptr);
+
+    if (crypto_scalarmult_base(k.pubkey.data(), pvtkey_ptr))
+      ex.throw_ex<std::runtime_error>("error deriving public key.");
+
+    return std::move(k);
   }
 
   /// @brief Rekey with a private key

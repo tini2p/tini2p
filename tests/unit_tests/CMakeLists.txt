@@ -53,6 +53,7 @@ add_executable(tini2p-tests
   data/router/certificate.cc
   data/router/identity.cc
   data/router/info.cc
+  data/router/lease_set.cc
   data/router/mapping.cc
 
   ntcp2/meta.cc

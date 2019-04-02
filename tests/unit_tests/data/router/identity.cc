@@ -50,7 +50,8 @@ TEST_CASE_METHOD(
     "RouterIdentity has a crypto public key",
     "[ident]")
 {
-  REQUIRE_NOTHROW(boost::get<crypto_t>(identity.crypto()).pubkey());
+  REQUIRE_NOTHROW(boost::apply_visitor(
+      [](const auto& c) { REQUIRE(c.pubkey().size() == std::decay_t<decltype(c)>::PublicKeyLen); }, identity.crypto()));
   REQUIRE(identity.crypto_pubkey_len() == crypto_t::PublicKeyLen);
 }
 
@@ -59,7 +60,8 @@ TEST_CASE_METHOD(
     "RouterIdentity has a signing public key",
     "[ident]")
 {
-  REQUIRE_NOTHROW(boost::get<signing_t>(identity.signing()).pubkey());
+  boost::apply_visitor(
+      [](const auto& s) { REQUIRE(s.pubkey().size() == std::decay_t<decltype(s)>::PublicKeyLen); }, identity.signing());
   REQUIRE_NOTHROW(identity.signing_pubkey_len() == signing_t::PublicKeyLen);
 }
 

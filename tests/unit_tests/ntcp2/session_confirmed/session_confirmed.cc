@@ -61,15 +61,14 @@ TEST_CASE_METHOD(
 
   using crypto_t = tini2p::crypto::EciesX25519<tini2p::crypto::HmacSha256>;
   REQUIRE(ri->identity().hash() == ret_ri->identity().hash());
-  REQUIRE(
-      boost::get<crypto_t>(ri->identity().crypto()).pubkey()
-      == boost::get<crypto_t>(ret_ri->identity().crypto()).pubkey());
 
-  crypto_t::pubkey_t s(tini2p::crypto::Base64::Decode(
-      ret_ri->options().entry(std::string("s"))));
+  const auto& r0_key = boost::apply_visitor([](const auto& c) { return c.pubkey(); }, ri->identity().crypto());
+  const auto& r1_key = boost::apply_visitor([](const auto& c) { return c.pubkey(); }, ret_ri->identity().crypto());
+  REQUIRE(r0_key == r1_key);
 
-  REQUIRE(
-      boost::get<crypto_t>(ret_ri->identity().crypto()).pubkey() == s);
+  crypto_t::pubkey_t s(tini2p::crypto::Base64::Decode(ret_ri->options().entry(std::string("s"))));
+
+  REQUIRE(boost::get<crypto_t>(ret_ri->identity().crypto()).pubkey() == s);
 }
 
 TEST_CASE_METHOD(

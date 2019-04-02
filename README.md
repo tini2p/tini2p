@@ -9,16 +9,17 @@ See the [design](./DESIGN.md) document for details on design decisions and proje
 - Catch2: [https://github.com/catchorg/Catch2](https://github.com/catchorg/Catch2)
 - Boost 1.66+: [https://github.com/boostorg/boost](https://github.com/boostorg/boost)
 - CMake 3.10+: [https://cmake.org](https://cmake.org)
-- libsodium: [https://github.com/jedisct1/libsodium](https://github.com/jedisct1/libsodium)
+- libSodium: [https://github.com/jedisct1/libsodium](https://github.com/jedisct1/libsodium)
+- LibreSSL: [https://github.com/libressl-portable/portable](https://github.com/libressl-portable/portable)
+  - Should work on hosts with OpenSSL, because LibreSSL is drop-in :)
+  - May require adding as a submodule pending requirement of Sha3 (Keccak1600)
 
 ### Submodules
 
-- tiny-AES-c: [https://github.com/kokke/tiny-AES-c](https://github.com/kokke/tiny-AES-c)
-  - Using local fork with header-only modifications
 - NoiseC : [https://github.com/tini2p/noise-c](https://github.com/tini2p/noise-c)
   - Currently using local fork with modifications for NTCP2
   - Possible long-term refactor plans:
-    - reimplement in native-C++ with wrappers around libsodium
+    - reimplement in C++ with wrappers around libSodium
     - maintain local refactored NoiseC with only needed components for I2P
 
 ### Cloning tini2p
@@ -67,7 +68,7 @@ another project.
 
 ## WIP
 
-This project is in its earliest stages, and *SHOULD NOT* be used when strong anonymity is needed (yet).
+This project is in its earliest stages, and _**SHOULD NOT**_ be used when strong anonymity is needed (yet).
 
 Core components:
 
@@ -81,6 +82,10 @@ Core components:
 - [ ] Garlic encryption
 - [ ] NetDb
 - [ ] LeaseSet
+  - [x] LeaseSet2
+  - [ ] EncryptedLeaseSet2 (optional, highly desired)
+  - [ ] MetaLeaseSet (optional)
+- [ ] ServiceList (optional)
 - [x] RouterInfo
 - [x] RouterIdentity
 - [x] RouterAddress
@@ -94,10 +99,14 @@ Client components:
 - [ ] ClientDestination
 - [ ] ClientTunnels
 - [ ] AddressBook
+- [ ] I2CP message processing
 - [ ] Reseed
 - [ ] Key + config storage
-- [ ] Proxies (SOCKS4a/5, HTTP & ZMQ)
-- [ ] Streaming API
+- [ ] Proxies
+  - [ ] SOCKS 4a/5
+  - [ ] HTTP(S)
+  - [ ] WebSockets
+  - [ ] ZMQ
 - [ ] SAMv3 API
 
 Crypto components:
@@ -111,25 +120,26 @@ Crypto components:
 - [x] HKDF key derivation
 - [x] SipHash obfuscation
 - [x] AES key generation, CBC-256 en/decryption
-- [ ] Ed25519ph key generation, signing/verification (via libsodium)
+- [ ] Ed25519ph key generation, signing/verification
 - [ ] Ecies-X25519-AEAD-Ratchet-[HKDF-HMAC-Sha256 / HKDF-Blake2b]
-  - [x] Basic implementation
+  - [x] Basic experimental implementation
   - full implementation pending on finalized [Proposal 144](https://geti2p.net/spec/proposals/144-ecies-x25519-aead-ratchet)
 - [ ] RedDSA key generation, signing/verification
 - [ ] XEdDSA key generation, signing/verification
+
+Only one of Ed25519ph or RedDSA need to be implemented for reseed signature processing.
+
+Since RedDSA may also be needed for key blinding, Ed25519ph may be extraneous and unwanted. Ed25519ph has the
+advantange of standardization, so TBD.
 
 Global components:
 
 - [ ] Logging
 - [ ] Storage: LMDB (AddressBook, NetDb storage)
 
-Only one of Ed25519ph or RedDSA need to be implemented for reseed signature processing.
-
-Since RedDSA may also be needed for key blinding, Ed25519ph may be extraneous and unwanted.
-
 ### Donate
 
-For those beautiful spirits that want to support the cause:
+For those beautiful beings that want to support the cause:
 
 XMR:
 
@@ -141,5 +151,5 @@ BTC:
 
 Grin:
 
-Eepsite: coming soon
-Onion address: coming soon
+- Eepsite: _coming soon_
+- Onion address: _coming soon_

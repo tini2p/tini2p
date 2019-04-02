@@ -146,7 +146,7 @@ TEST_CASE_METHOD(
   REQUIRE_NOTHROW(map.serialize());
 
   // will overrun the buffer if unchecked
-  map.buffer().at(meta::KeySizeOffset) = 0xFF;
+  map.buffer()[meta::KeySizeOffset] = 0xFF;
   REQUIRE_THROWS(map.deserialize());
 }
 
@@ -162,7 +162,7 @@ TEST_CASE_METHOD(
   // will overrun the buffer if unchecked
   const auto& value_offset =
       meta::KeySizeOffset + entry.key().size() + meta::DelimSize;
-  map.buffer().at(value_offset) = 0xFF;
+  map.buffer()[value_offset] = 0xFF;
   REQUIRE_THROWS(map.deserialize());
 }
 
@@ -174,8 +174,7 @@ TEST_CASE_METHOD(
   REQUIRE_NOTHROW(map.serialize());
 
   // invalidate the buffer size
-  const auto tmp = map.buffer().back();
-  REQUIRE_NOTHROW(map.buffer().pop_back());
+  REQUIRE_NOTHROW(map.buffer().resize(map.size() - 0x1));
   REQUIRE_THROWS(map.deserialize());
 }
 
@@ -185,8 +184,9 @@ TEST_CASE_METHOD(
     "[map]")
 {
   // invalidate the mapping size
-  map.buffer().resize(1);
-  map.buffer().at(meta::SizeOffset) = 0xFF;
+  auto& buf = map.buffer();
+  buf.resize(1);
+  buf[meta::SizeOffset] = 0xFF;
 
   REQUIRE_THROWS(map.deserialize());
 }
@@ -205,9 +205,7 @@ TEST_CASE_METHOD(
   auto& buf = map.buffer();
 
   // find and remove the key-value delimiter ("=")
-  const auto& kv_it = std::find(buf.begin(), buf.end(), kv_delim);
-
-  REQUIRE_NOTHROW(buf.erase(kv_it));
+  const auto& kv_it = std::remove(buf.begin(), buf.end(), kv_delim);
 
   REQUIRE_THROWS(map.deserialize());
 }

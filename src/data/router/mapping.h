@@ -40,15 +40,16 @@
 
 #include "src/data/router/meta.h"
 
-namespace exception = tini2p::exception;
-
 namespace tini2p
 {
 namespace data
 {
+// TODO(tini2p): housekeeping: replace decltype w/ trait aliases, localize metadata
+
 /// @brief Container for set-compatible mapping entry
 class MappingEntry
 {
+  // TODO(tini2p): use secure buffers
   std::vector<std::uint8_t> key_, value_;
 
  public:
@@ -139,21 +140,44 @@ class MappingEntry
 /// @brief Class for storing/processing I2P mappings
 class Mapping
 {
-  std::set<MappingEntry> kv_;
-  std::vector<std::uint8_t> buffer_;
-  const std::string kv_delim_{"="}, tail_delim_{";"};
-
  public:
-  /// @brief Get a const reference to the buffer
-  const decltype(buffer_)& buffer() const noexcept
+  using buffer_t = crypto::SecBytes;
+
+  enum
   {
-    return buffer_;
+    MinLen = 2,
+    MaxLen = 32767,  //< ~32 kB
+  };
+
+  Mapping() : buf_(MinLen)
+  {
+    serialize();
+  }
+
+  explicit Mapping(buffer_t buf) : buf_(std::forward<buffer_t>(buf))
+  {
+    deserialize();
+  }
+
+  Mapping(const std::uint8_t* data, const std::size_t len)
+  {
+    tini2p::check_cbuf(data, len, MinLen, MaxLen, {"Mapping", __func__});
+
+    buf_.resize(len);
+    std::copy_n(data, len, buf_.data());
+
+    deserialize();
+  }
+  /// @brief Get a const reference to the buffer
+  const buffer_t& buffer() const noexcept
+  {
+    return buf_;
   }
 
   /// @brief Get a mutable reference to the buffer
-  decltype(buffer_)& buffer() noexcept
+  buffer_t& buffer() noexcept
   {
-    return buffer_;
+    return buf_;
   }
 
   /// @brief Get a const reference to the mapping entry at key
@@ -199,13 +223,20 @@ class Mapping
     kv_.emplace(std::move(entry));
   }
 
+  /// @brief Move-assignment operator
+  void operator=(const Mapping& oth)
+  {
+    kv_ = oth.kv_;
+    buf_ = oth.buf_;
+  }
+
   /// @brief Serialize the mapping to buffer
   void serialize()
   {
     namespace meta = tini2p::meta::router::mapping;
 
-    buffer_.resize(size());
-    tini2p::BytesWriter<decltype(buffer_)> writer(buffer_);
+    buf_.resize(size());
+    tini2p::BytesWriter<buffer_t> writer(buf_);
 
     writer.write_bytes<std::uint16_t>(size() - meta::SizeSize);
 
@@ -228,7 +259,7 @@ class Mapping
   {
     namespace meta = tini2p::meta::router::mapping;
 
-    tini2p::BytesReader<decltype(buffer_)> reader(buffer_);
+    tini2p::BytesReader<buffer_t> reader(buf_);
 
     // read the mapping size
     std::uint16_t size;
@@ -237,7 +268,7 @@ class Mapping
     if (!size)
       return;
 
-    if (size < meta::MinSize || size + meta::SizeSize > buffer_.size())
+    if (size < meta::MinSize || size + meta::SizeSize > buf_.size())
       exception::Exception{"Router: Mapping", __func__}
           .throw_ex<std::length_error>("invalid mapping size.");
 
@@ -271,6 +302,11 @@ class Mapping
         add(key, value);
       }
   }
+
+ private:
+  std::set<MappingEntry> kv_;
+  buffer_t buf_;
+  const std::string kv_delim_{"="}, tail_delim_{";"};
 };
 }  // namespace data
 }  // namespace tini2p
