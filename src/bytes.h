@@ -50,6 +50,39 @@ inline void read_bytes(const It it, Bytes& bytes)
   std::copy(it, it + sizeof(bytes), reinterpret_cast<std::uint8_t*>(&bytes));
 }
 
+/// @brief Cast an enum to it's underlying type
+template <class TEnum, typename = std::enable_if_t<std::is_enum<TEnum>::value>>
+inline static decltype(auto) under_cast(const TEnum& e)
+{
+  return static_cast<typename std::underlying_type<std::decay_t<TEnum>>::type>(e);
+}
+
+/// @brief Bounds-check a C-like buffer
+/// @detail Set min_len and max_len to zero to only check for null buffer
+/// @param data Const pointer to the buffer
+/// @param len Length of the buffer
+/// @param min_len Minimum length bound
+/// @param max_len Maximum length bound
+/// @param ex Exception handler
+inline static void check_cbuf(
+    const std::uint8_t* data,
+    const std::size_t len,
+    const std::size_t min_len,
+    const std::size_t max_len,
+    const exception::Exception& ex)
+{
+  if (!data || !len)
+    ex.throw_ex<std::invalid_argument>("null buffer.");
+
+  if (min_len > max_len)
+    ex.throw_ex<std::invalid_argument>("invalid length range.");
+
+  if ((min_len | max_len) != 0 && (len < min_len || len > max_len))
+    ex.throw_ex<std::invalid_argument>(
+        "invalid length: " + std::to_string(len) + " min: " + std::to_string(min_len)
+        + " max: " + std::to_string(max_len));
+}
+
 /// @brief Write byte(s) to an iterator from an integral/float
 /// @param it Write byte(s) to this iterator 
 /// @param bytes Copy byte(s) from this value
