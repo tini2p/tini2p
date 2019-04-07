@@ -12,7 +12,7 @@ BinPackArguments: false
 BinPackParameters: false
 BreakBeforeBinaryOperators: NonAssignment
 BreakBeforeBraces: GNU
-ColumnLimit: 80
+ColumnLimit: 120
 CommentPragmas: '.*'
 DerivePointerAlignment: false
 PointerAlignment: Left
