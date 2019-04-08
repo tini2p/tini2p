@@ -1,3 +1,12 @@
+# Out-of-Date
+
+This repository is no longer maintained as the main repository.
+
+Efforts will be made to regularly update this repo, but user's should rely on the main repositories:
+
+- GitLab: [https://gitlab.com/tini2p/tini2p](https://gitlab.com/tini2p/tini2p)
+- GitHub: [https://github.com/tini2p-project/tini2p](https://github.com/tini2p-project/tini2p)
+
 # tinI2P
 
 tini2p is designed to be a header-only, minimal, modular C++ I2P libary.
